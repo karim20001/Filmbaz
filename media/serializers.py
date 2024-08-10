@@ -1,11 +1,11 @@
 from rest_framework import serializers
 from rest_framework.fields import CurrentUserDefault
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Count
+from django.db.models import Count, Avg
 from django.forms.models import model_to_dict
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from .models import Movie, UserMovie, Cast, Actor, Genre, Comment
+from .models import Movie, UserMovie, Cast, Actor, Genre, Comment, UserEpisode, UserShow, Episode, Show
 
 
 class MovieWatchListSerializer(serializers.HyperlinkedModelSerializer):
@@ -172,7 +172,60 @@ class CommentSerializer(serializers.ModelSerializer):
         validated_data['user'] = request.user
         return super().create(validated_data)
 
-    
+
+class EpisodeRateSerializer(serializers.ModelSerializer):
+    average_user_rate = serializers.DecimalField(max_digits=2, decimal_places=1, read_only=True)
+    class Meta:
+        model = Episode
+        fields = ['episode_number', 'average_user_rate']
+
+class SeasonSerializer(serializers.Serializer):
+    season = serializers.IntegerField()
+    episodes = EpisodeRateSerializer(many=True)
+
+class ShowSerializer(serializers.ModelSerializer):
+    genres = GenreSerializer()
+    seasons_rate = serializers.SerializerMethodField()
+    class Meta:
+        model = Show
+        fields = ['name', 'season_count', 'imdb_rate', 'users_rate', 'release_year',
+                  'duration', 'release_time', 'release_day', 'users_added_count',
+                  'users_rate_count', 'genres', 'cover_photo', 'seasons_rate']
+
+    def get_seasons_rate(self, obj):
+    # Get distinct seasons for the show
+        seasons = obj.episodes.values_list('season', flat=True).distinct().order_by('season')
+
+        # Prepare a list of seasons with their episodes
+        season_data = []
+        for season in seasons:
+            episodes = obj.episodes.filter(season=season).annotate(average_user_rate=Avg('user_episodes__user_rate')).order_by('episode_number')
+            season_data.append({
+                'season': season,
+                'episodes': EpisodeRateSerializer(episodes, many=True).data
+            })
+        
+        return season_data
+class SimpleShowNameSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Show
+        fields = ['id', 'name']
+
+class ShowWatchListSerialzier(serializers.ModelSerializer):
+    show = SimpleShowNameSerializer()
+    class Meta:
+        model = Episode
+        fields = ['id', 'name', 'season', 'episode_number', 'cover_photo', 'show']
+
+
+class UserEpisodeSerialzier(serializers.ModelSerializer):
+    class Meta:
+        model = UserEpisode
+        fields = ['user', 'episode']
+
+
+
+
     # def get_watch_link(self, obj):
     #     request = self.context.get('request')
     #     user = request.user if request else None

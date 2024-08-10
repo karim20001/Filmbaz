@@ -29,7 +29,7 @@ class Show(models.Model):
     cover_photo = models.ImageField(upload_to='shows/photos/', null=True, blank=True)
 
     def __str__(self):
-        return self.name | self.season_count
+        return f"{self.name} | Season {self.season_count}"
 
 
 class Episode(models.Model):

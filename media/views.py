@@ -6,11 +6,19 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 from urllib.parse import urlparse
 from django.db.models import Count
 import datetime
-from .models import UserMovie, Movie, Cast, Comment
-from .serializers import MovieWatchListSerializer, SingleMovieSerializer, UserMovieSerialzier, CommentSerializer
+from .models import UserMovie, Movie, Cast, Comment, UserEpisode, Episode, Show, UserShow
+from .serializers import (MovieWatchListSerializer,
+                          SingleMovieSerializer,
+                          UserMovieSerialzier,
+                          CommentSerializer,
+                          ShowWatchListSerialzier,
+                          ShowSerializer,
+                          )
+from .permissions import AuthenticateOwnerComment
 
 class MovieWatchListView(viewsets.ReadOnlyModelViewSet):
     serializer_class = MovieWatchListSerializer
@@ -74,6 +82,9 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
 
     def partial_update(self, request, *args, **kwargs):
         movie = self.get_object()
+        if movie.release_date > datetime.date.today():
+            return Response({"message": "movie not released"}, status.HTTP_400_BAD_REQUEST)
+        
         user = request.user
         user_movie = get_object_or_404(UserMovie, user=user, movie=movie)
 
@@ -160,7 +171,7 @@ class CommentViewSet(mixins.CreateModelMixin,
                      viewsets.GenericViewSet):
 
     serializer_class = CommentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, AuthenticateOwnerComment]
 
     def get_content_type(self):
         url = self.request.build_absolute_uri()
@@ -195,6 +206,11 @@ class CommentViewSet(mixins.CreateModelMixin,
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         return Response(serializer.data, status.HTTP_201_CREATED)
+    
+    def list(self, request, movie_pk=None):
+        queryset = self.get_queryset()
+        serializer = CommentSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], url_path='reply', url_name='sub_comment')
     def create_sub_comment(self, request, movie_pk=None, pk=None):
@@ -207,6 +223,12 @@ class CommentViewSet(mixins.CreateModelMixin,
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         return Response(serializer.data, status.HTTP_201_CREATED)
+    
+    @create_sub_comment.mapping.delete
+    def delete_sub_comment(self, request, movie_pk=None, pk=None):
+        comment = get_object_or_404(Comment, pk=pk, parent__isnull=False)
+        comment.delete()
+        return Response({"message": "reply deleted"}, status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'])
     def like(self, request, movie_pk=None, pk=None):
@@ -229,6 +251,97 @@ class CommentViewSet(mixins.CreateModelMixin,
         
         comment.likes.remove(user)
         return Response({'message': 'Comment unliked!'}, status.HTTP_204_NO_CONTENT)
+    
+
+# show section
+class ShowWatchListView(viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ShowWatchListSerialzier
+
+    def get_queryset(self):
+        return Episode.objects.all()
+    
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        data = request.data.copy()
+
+        UserEpisode.objects.create(user=user)
+
+    @action(detail=False, methods=['get'])
+    def watchlist(self, request):
+        user = request.user
+        # Watched History
+        watched_history = UserEpisode.objects.filter(user=user).order_by('-watch_date')
+        watched_episodes = [wh.episode for wh in watched_history]
+        watched_serialized = self.get_serializer(watched_episodes, many=True).data
+
+        # Watch Next (Episodes of shows the user has started watching but not yet finished)
+        # Dictionary to hold the last watched episode per show
+        last_watched = {}
+        for ue in watched_history:
+            show = ue.episode.show
+            if show not in last_watched or (ue.episode.season > last_watched[show].season or (ue.episode.season == last_watched[show].season and ue.episode.episode_number > last_watched[show].episode_number)):
+                last_watched[show] = ue.episode
+
+        # List to hold the next episodes to watch
+        next_episodes = []
+        old_episodes = []
+        time_threshold = timezone.now() - datetime.timedelta(minutes=8) # assuming 4 weeks as the threshold
+
+        for show, last_episode in last_watched.items():
+            next_episode = Episode.objects.filter(show=show, season=last_episode.season, episode_number=last_episode.episode_number + 1).first()
+            if not next_episode:
+                next_episode = Episode.objects.filter(show=show, season=last_episode.season + 1, episode_number=1).first()
+
+            if next_episode:
+                # Haven't Watched for a While
+                if UserEpisode.objects.get(user=user, episode=last_episode).watch_date <= time_threshold:
+                    old_episodes.append(next_episode)
+
+                else:
+                    next_episodes.append(next_episode)
+
+        watch_next_serialized = self.get_serializer(next_episodes, many=True).data
+        old_serialized = self.get_serializer(old_episodes, many=True).data
+
+        response_data = {
+            'watched_history': watched_serialized,
+            'watch_next': watch_next_serialized,
+            'havent_watched_for_a_while': old_serialized
+        }
+
+        return Response(response_data)
+
+
+class SingleShowView(mixins.RetrieveModelMixin,
+                    viewsets.GenericViewSet):
+    serializer_class = ShowSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Show.objects.all()
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # def retrieve(self, request, pk):
     #     movie = get_object_or_404(Movie, id=pk)

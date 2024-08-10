@@ -4,12 +4,9 @@ from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 from django.core.management.base import BaseCommand
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.auth import get_user_model
 from core.models import CustomUser
 from media.models import Genre, Show, Episode, Movie, Actor, Cast, UserShow, UserEpisode, UserMovie, Follow, Comment
-from django.contrib.auth import get_user_model
-
-# User = get_user_model()
-# fake = Faker()
 
 def generate_valid_decimal(min_value, max_value, decimal_places):
     value = round(random.uniform(min_value, max_value), decimal_places)
@@ -23,11 +20,15 @@ class Command(BaseCommand):
         User = get_user_model()
 
         # Create fake users
-        users = [User.objects.create_user(
-            username=faker.user_name(),
-            password='password',
-            email=faker.email()
-        ) for _ in range(20)]
+        users = []
+        for _ in range(20):
+            username = faker.user_name()
+            email = faker.email()
+            password = 'password'
+            user = User(username=username, email=email)
+            user.set_password(password)
+            user.save()
+            users.append(user)
 
         # Create genres
         genres = [Genre.objects.create(name=faker.word()) for _ in range(20)]
@@ -91,7 +92,6 @@ class Command(BaseCommand):
 
         # Create casts
         all_content_objects = shows + episodes + movies
-        content_types = [ContentType.objects.get_for_model(model) for model in [Show, Episode, Movie]]
         for _ in range(20):
             content_object = random.choice(all_content_objects)
             content_type = ContentType.objects.get_for_model(type(content_object))
@@ -151,16 +151,17 @@ class Command(BaseCommand):
         for _ in range(20):
             content_object = random.choice(all_content_objects)
             content_type = ContentType.objects.get_for_model(type(content_object))
-            Comment.objects.create(
+            comment = Comment.objects.create(
                 user=random.choice(users),
                 content_type=content_type,
                 object_id=content_object.id,
                 content_object=content_object,
                 detail=faker.text(),
-                likes=random.randint(0, 100),
                 is_active=random.choice([True, False]),
                 is_spoiler=random.choice([True, False]),
                 parent=None
             )
+            # Add likes to the comment
+            comment.likes.set(random.sample(users, random.randint(0, 10)))
 
         self.stdout.write(self.style.SUCCESS('Successfully generated fake data'))
