@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from urllib.parse import urlparse
+from collections import defaultdict
 from django.db.models import Count
 import datetime
 from .models import UserMovie, Movie, Cast, Comment, UserEpisode, Episode, Show, UserShow
@@ -17,8 +18,12 @@ from .serializers import (MovieWatchListSerializer,
                           CommentSerializer,
                           ShowWatchListSerialzier,
                           ShowSerializer,
+                          UserShowSerializer,
+                          EpisodeSerializer,
+                          SingleEpisodeSerializer,
+                          UserEpisodeSerializer,
                           )
-from .permissions import AuthenticateOwnerComment
+from .permissions import AuthenticateOwnerComment, WatchedEpisodeByUser
 
 class MovieWatchListView(viewsets.ReadOnlyModelViewSet):
     serializer_class = MovieWatchListSerializer
@@ -115,13 +120,18 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
 
         old_favorite_cast = user_movie.favorite_cast
         new_favorite_cast_id = data.get('favorite_cast')
+        content_type = ContentType.objects.get(model='episode').id
 
-        if new_favorite_cast_id and (not old_favorite_cast or new_favorite_cast_id != old_favorite_cast.id):
-            new_favorite_cast = get_object_or_404(Cast, id=new_favorite_cast_id)
-            self.update_likes_for_favorite_cast(old_favorite_cast, new_favorite_cast)
+        if Cast.objects.filter(id=new_favorite_cast_id, object_id=old_favorite_cast.id, content_type=content_type):
 
-            user_movie.favorite_cast = new_favorite_cast
+            if new_favorite_cast_id and (not old_favorite_cast or new_favorite_cast_id != old_favorite_cast.id):
+                new_favorite_cast = get_object_or_404(Cast, id=new_favorite_cast_id)
+                self.update_likes_for_favorite_cast(old_favorite_cast, new_favorite_cast)
 
+                user_movie.favorite_cast = new_favorite_cast
+        else:
+            return Response({"detail": "cast is not related"}, status.HTTP_400_BAD_REQUEST)
+        
         old_user_rate = user_movie.user_rate
         new_user_rate = data.get('user_rate')
 
@@ -178,14 +188,27 @@ class CommentViewSet(mixins.CreateModelMixin,
         parsed_url = urlparse(url)
         content_type = parsed_url.path.strip('/').split('/')
 
-        if "episode" in content_type:
+        if "episodes" in content_type:
             return "episode"
+        elif "series" in content_type:
+            return "show"
         else:
-            return content_type[0]
+            return "movie"
+    
+    def get_content_type_pk(self, content_type):
+        if content_type == 'episode':
+            return self.kwargs['episodes_pk']
+        
+        elif content_type == 'show':
+            return self.kwargs['series_pk']
+        
+        elif content_type == 'movie':
+            return self.kwargs['movie_pk']
     
     def get_queryset(self):
         content_type = self.get_content_type()
-        return Comment.objects.filter(content_type__model=content_type, object_id=self.kwargs['movie_pk'], parent=None)\
+        media_id = self.get_content_type_pk(content_type)
+        return Comment.objects.filter(content_type__model=content_type, object_id=media_id, parent=None)\
             .select_related('user')\
             .prefetch_related('likes', 'replies', 'replies__likes', 'replies__user')
     
@@ -196,25 +219,25 @@ class CommentViewSet(mixins.CreateModelMixin,
             context['include_replies'] = True
         return context
     
-    def create(self, request, movie_pk=None):
+    def create(self, request, *args, **kwargs):
         data = request.data.copy()
         content_type = self.get_content_type()
         data['content_type'] = ContentType.objects.get(model=content_type).id
-        data['object_id'] = movie_pk
+        data['object_id'] = self.get_content_type_pk(content_type)
         print(data['object_id'])
         serializer = self.get_serializer(data=data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         return Response(serializer.data, status.HTTP_201_CREATED)
     
-    def list(self, request, movie_pk=None):
+    def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = CommentSerializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'], url_path='reply', url_name='sub_comment')
-    def create_sub_comment(self, request, movie_pk=None, pk=None):
-        parent_comment = get_object_or_404(Comment, pk=pk)
+    def create_sub_comment(self, request, *args, **kwargs):
+        parent_comment = get_object_or_404(Comment, pk=self.kwargs['pk'])
         data = request.data.copy()
         data['parent'] = parent_comment.id
         data['content_type'] = parent_comment.content_type.id
@@ -225,14 +248,14 @@ class CommentViewSet(mixins.CreateModelMixin,
         return Response(serializer.data, status.HTTP_201_CREATED)
     
     @create_sub_comment.mapping.delete
-    def delete_sub_comment(self, request, movie_pk=None, pk=None):
-        comment = get_object_or_404(Comment, pk=pk, parent__isnull=False)
+    def delete_sub_comment(self, request, *args, **kwargs):
+        comment = get_object_or_404(Comment, pk=self.kwargs['pk'], parent__isnull=False)
         comment.delete()
         return Response({"message": "reply deleted"}, status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'])
-    def like(self, request, movie_pk=None, pk=None):
-        comment = get_object_or_404(Comment, pk=pk)
+    def like(self, request, *args, **kwargs):
+        comment = get_object_or_404(Comment, pk=self.kwargs['pk'])
         user = request.user
 
         if comment.likes.filter(id=user.id).exists():
@@ -242,8 +265,8 @@ class CommentViewSet(mixins.CreateModelMixin,
         return Response({'message': 'Comment liked!'}, status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
-    def unlike(self, request, movie_pk=None, pk=None):
-        comment = get_object_or_404(Comment, pk=pk)
+    def unlike(self, request, *args, **kwargs):
+        comment = get_object_or_404(Comment, pk=self.kwargs['pk'])
         user = request.user
 
         if not comment.likes.filter(id=user.id).exists():
@@ -260,12 +283,6 @@ class ShowWatchListView(viewsets.GenericViewSet):
 
     def get_queryset(self):
         return Episode.objects.all()
-    
-    def create(self, request, *args, **kwargs):
-        user = request.user
-        data = request.data.copy()
-
-        UserEpisode.objects.create(user=user)
 
     @action(detail=False, methods=['get'])
     def watchlist(self, request):
@@ -313,18 +330,171 @@ class ShowWatchListView(viewsets.GenericViewSet):
         return Response(response_data)
 
 
-class SingleShowView(mixins.RetrieveModelMixin,
-                    viewsets.GenericViewSet):
-    serializer_class = ShowSerializer
+class SingleShowView(mixins.CreateModelMixin,
+                     mixins.RetrieveModelMixin,
+                     mixins.DestroyModelMixin,
+                     viewsets.GenericViewSet):
+    
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Show.objects.all()
+        if self.action == 'retrieve':
+            return Show.objects.all()
+        else:
+            return UserShow.objects.all()
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return ShowSerializer
+        else:
+            return UserShowSerializer
 
+    def create(self, request, *args, **kwargs):
+        # Extract the show ID from the URL's pk
+        show_pk = kwargs.get('pk')
+        
+        # Ensure the user is set to the current authenticated user
+        data = request.data.copy()
+        data['user'] = request.user.pk
+        data['show'] = show_pk  # Set the show from the URL's pk
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+    def perform_create(self, serializer):
+        # Automatically set the user to the current authenticated user
+        serializer.save(user=self.request.user)
+    
+    def destroy(self, request, pk):
+        show = get_object_or_404(Show, pk=pk)
+        user_show = get_object_or_404(UserShow, user=request.user, show=show)
+        user_show.delete()
+        return Response({"message": "deleted"},  status.HTTP_204_NO_CONTENT)
+
+
+class EpisodeView(
+                  mixins.CreateModelMixin,
+                  mixins.RetrieveModelMixin,
+                  viewsets.GenericViewSet):
+    
+    serializer_class = Episode
+    queryset = Episode.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if self.action in ['list', 'retrieve']:
+            show_id = self.kwargs.get('series_pk')
+            return Episode.objects.filter(show__id=show_id).order_by('season', 'episode_number')
+        
+        else:
+            return get_object_or_404(UserEpisode, user=self.request.user, episode__id=self.kwargs.get('pk'))
+            
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return EpisodeSerializer
+        
+        elif self.action == 'retrieve':
+            return SingleEpisodeSerializer
+        
+        else:
+            return UserEpisodeSerializer
     
 
+    def get_permissions(self):
 
+        if self.action == 'destroy' or self.action == 'partial_update':
+            permission_classes = [IsAuthenticated, WatchedEpisodeByUser]
+        else:
+            permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]
+    
+    def list(self, request, series_pk=None):
+        queryset = self.get_queryset()
+        grouped_episodes = defaultdict(list)
 
+        for episode in queryset:
+            serializer = self.get_serializer(episode)
+            grouped_episodes[episode.season].append(serializer.data)
+
+        return Response(grouped_episodes)
+    
+    def create(self, request, *args, **kwargs):
+        episode_id = self.kwargs['pk']
+        episode = get_object_or_404(Episode, pk=episode_id)
+        user = request.user
+
+        if not UserShow.objects.filter(user=user, show=episode.show).exists():
+            UserShow.create(user=user, show=episode.show)
+        
+        UserEpisode.create(user=user, episode=episode)
+
+        return Response({"detail": "Episode watched"}, status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_queryset()
+        data = request.data
+
+        if instance.user != request.user:
+            return Response({"detail": "You do not have permission to modify this episode."}, status=status.HTTP_403_FORBIDDEN)
+
+        old_favorite_cast = instance.favorite_cast
+        new_favorite_cast_id = data.get('favorite_cast')
+        content_type = ContentType.objects.get(model='episode').id
+
+        if Cast.objects.filter(id=new_favorite_cast_id, object_id=instance.episode.id, content_type=content_type):
+
+            if new_favorite_cast_id and (not old_favorite_cast or new_favorite_cast_id != old_favorite_cast.id):
+                new_favorite_cast = get_object_or_404(Cast, id=new_favorite_cast_id)
+                self.update_likes_for_favorite_cast(old_favorite_cast, new_favorite_cast)
+                instance.favorite_cast = new_favorite_cast
+
+        else:
+            return Response({"detail": "cast is not related"}, status.HTTP_400_BAD_REQUEST)
+        
+        old_user_rate = instance.user_rate
+        new_user_rate = data.get('user_rate')
+
+        if new_user_rate is not None and new_user_rate != old_user_rate:
+            instance.user_rate = new_user_rate
+            self.update_users_rate(instance, old_user_rate, new_user_rate)
+
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data, status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_queryset()
+
+        if instance.user != request.user:
+            return Response({"detail": "You do not have permission to modify this episode."}, status=status.HTTP_403_FORBIDDEN)
+
+        instance.delete()
+        return Response({"detail": "episode unwatched"}, status.HTTP_204_NO_CONTENT)
+
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+    def update_likes_for_favorite_cast(self, old_cast, new_cast):
+        if old_cast:
+            old_cast.likes -= 1
+            old_cast.save()
+        new_cast.likes += 1
+        new_cast.save()
+
+    def update_users_rate(self, episode, old_rate, new_rate):
+        if old_rate is not None:
+            episode.users_rate = ((episode.users_rate * episode.usermovie_set.count()) - old_rate + new_rate) / episode.usermovie_set.count()
+        else:
+            episode.users_rate = ((episode.users_rate * (episode.usermovie_set.count() - 1)) + new_rate) / episode.usermovie_set.count()
+        episode.save()
 
 
 

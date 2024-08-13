@@ -1,5 +1,6 @@
 from rest_framework import permissions
 import datetime
+from .models import UserEpisode
 
 class MediaReleaseDate(permissions.BasePermission):
 
@@ -15,3 +16,10 @@ class AuthenticateOwnerComment(permissions.BasePermission):
             return True
         
         return obj.user == request.user
+    
+
+class WatchedEpisodeByUser(permissions.BasePermission):
+
+    def has_object_permission(self, request, view, obj):
+        return True
+        # return UserEpisode.objects.filter(user=request.user, episode=obj).exists()

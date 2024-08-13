@@ -36,8 +36,12 @@ class SimpleCastSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cast
-        fields = ['name', 'actor', 'likes', 'photo']
+        fields = ['id', 'name', 'actor', 'photo']
 
+class SimilarMovieSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Movie
+        fields = ['id', 'name', 'cover_photo']
 
 class SingleMovieSerializer(serializers.ModelSerializer):
     genres = GenreSerializer()
@@ -50,6 +54,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
     users_rate_counts = serializers.SerializerMethodField()
     favorite_cast_stats = serializers.SerializerMethodField()
     emoji_stats = serializers.SerializerMethodField()
+    similar_movies = serializers.SerializerMethodField()
 
     class Meta:
         model = Movie
@@ -57,7 +62,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
         fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description',
                   'release_date', 'genres', 'casts', 'rate_count', 'cover_photo',
                   'added_count', 'users_rate_counts', 'favorite_cast_stats',
-                  'user_movie', 'emoji_stats']
+                  'user_movie', 'emoji_stats', 'similar_movies']
     
     # depth = 1
     
@@ -116,6 +121,10 @@ class SingleMovieSerializer(serializers.ModelSerializer):
             except UserMovie.DoesNotExist:
                 pass
         return None
+    
+    def get_similar_movies(self, obj):
+        similar_movies = obj.get_similar_movies()
+        return SimilarMovieSerializer(similar_movies, many=True).data
 
 class SimpleUserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -149,7 +158,7 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ['user', 'detail', 'created_date', 'is_spoiler', 'content_type', 'object_id',
+        fields = ['id', 'user', 'detail', 'created_date', 'is_spoiler', 'content_type', 'object_id',
                    'parent', 'replies', 'replies_count', 'likes_count', 'user_liked']
         read_only_fields = ['created_at', 'is_spoiler', 'replies', 'likes']
     
@@ -183,14 +192,24 @@ class SeasonSerializer(serializers.Serializer):
     season = serializers.IntegerField()
     episodes = EpisodeRateSerializer(many=True)
 
+
+class SimilarShowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Show
+        fields = ['id', 'name', 'cover_photo']
+
+
 class ShowSerializer(serializers.ModelSerializer):
     genres = GenreSerializer()
     seasons_rate = serializers.SerializerMethodField()
+    similar_shows = serializers.SerializerMethodField()
+
     class Meta:
         model = Show
         fields = ['name', 'season_count', 'imdb_rate', 'users_rate', 'release_year',
                   'duration', 'release_time', 'release_day', 'users_added_count',
-                  'users_rate_count', 'genres', 'cover_photo', 'seasons_rate']
+                  'users_rate_count', 'genres', 'cover_photo', 'seasons_rate',
+                  'similar_shows']
 
     def get_seasons_rate(self, obj):
     # Get distinct seasons for the show
@@ -206,6 +225,10 @@ class ShowSerializer(serializers.ModelSerializer):
             })
         
         return season_data
+    
+    def get_similar_shows(self, obj):
+        similar_shows = obj.get_similar_shows()
+        return SimilarShowSerializer(similar_shows, many=True).data
 class SimpleShowNameSerializer(serializers.ModelSerializer):
     class Meta:
         model = Show
@@ -218,14 +241,95 @@ class ShowWatchListSerialzier(serializers.ModelSerializer):
         fields = ['id', 'name', 'season', 'episode_number', 'cover_photo', 'show']
 
 
-class UserEpisodeSerialzier(serializers.ModelSerializer):
+class UserShowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserShow
+        fields = ['user', 'show', 'added_date', 'status',
+                  'is_favorite', 'user_rate']
+
+class EpisodeSerializer(serializers.ModelSerializer):
+    user_watched = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Episode
+        fields = ['id', 'season', 'episode_number', 'name', 'cover_photo',
+                  'user_watched']
+
+    def get_user_watched(self, obj):
+        user = self.context['request'].user
+        return UserEpisode.objects.filter(user=user, episode=obj).exists()
+
+class UserEpisodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserEpisode
-        fields = ['user', 'episode']
+        fields = ['user_rate', 'emoji', 'favorite_cast']
 
 
+class SingleEpisodeSerializer(serializers.ModelSerializer):
+    casts = serializers.SerializerMethodField()
+    users_rate = serializers.SerializerMethodField()
+    favorite_cast_stats = serializers.SerializerMethodField()
+    emoji_stats = serializers.SerializerMethodField()
+    class Meta:
+        model = Episode
+        fields = ['id', 'season', 'episode_number', 'name', 'cover_photo',
+                  'casts', 'users_rate', 'favorite_cast_stats', 'emoji_stats']
 
+    def get_user_episode(self, obj):
+        request = self.context.get('request')
+        user = request.user if request else None
+        if user:
+            try:
+                user_episode = UserEpisode.objects.get(user=user, episode=obj)
+                return UserEpisodeSerializer(user_episode).data
+            except:
+                return None
+        return None
 
+    def get_casts(self, obj):
+        casts = Cast.objects.filter(content_type__model='episode', object_id=obj.id)  # Filter casts related to the movie
+        return SimpleCastSerializer(casts, many=True).data
+    
+    def get_users_rate(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                user_movie = UserEpisode.objects.get(user=request.user, episode=obj)
+                if user_movie.user_rate is not None:
+                    rate_counts = UserEpisode.objects.filter(episode=obj, user_rate__isnull=False).values('user_rate').annotate(count=Count('user_rate')).order_by('user_rate')
+                    total_users = UserEpisode.objects.filter(episode=obj, user_rate__isnull=False).count()
+                    return {rate_count['user_rate']: int((rate_count['count'] / total_users) * 100) for rate_count in rate_counts}
+            except UserEpisode.DoesNotExist:
+                pass
+        return None
+    
+    def get_favorite_cast_stats(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                user_movie = UserEpisode.objects.get(user=request.user, episode=obj)
+                if user_movie.favorite_cast is not None:
+                    favorite_cast_counts = UserEpisode.objects.filter(episode=obj, favorite_cast__isnull=False).values('favorite_cast').annotate(count=Count('favorite_cast'))
+                    total_users = UserEpisode.objects.filter(episode=obj, favorite_cast__isnull=False).count()
+                    return {favorite_cast['favorite_cast']: int((favorite_cast['count'] / total_users) * 100) for favorite_cast in favorite_cast_counts}
+
+            except UserEpisode.DoesNotExist:
+                pass
+        return None
+    
+    def get_emoji_stats(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            try:
+                user_movie = UserEpisode.objects.get(user=request.user, episode=obj)
+                if user_movie.emoji is not None:
+                    emoji_counts = UserEpisode.objects.filter(episode=obj, emoji__isnull=False).values('emoji').annotate(count=Count('emoji'))
+                    total_users = UserEpisode.objects.filter(episode=obj, emoji__isnull=False).count()
+                    return {emoji['emoji']: int((emoji['count'] / total_users) * 100) for emoji in emoji_counts}
+
+            except UserEpisode.DoesNotExist:
+                pass
+        return None
     # def get_watch_link(self, obj):
     #     request = self.context.get('request')
     #     user = request.user if request else None

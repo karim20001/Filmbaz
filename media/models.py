@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.db.models import Count, Q
 
 
 class Genre(models.Model):
@@ -30,6 +31,16 @@ class Show(models.Model):
 
     def __str__(self):
         return f"{self.name} | Season {self.season_count}"
+    
+    def get_similar_shows(self):
+        # Retrieve shows that share at least one genre with the current show, excluding the show itself
+        similar_shows = Show.objects.filter(
+            genres__in=self.genres.all()
+        ).exclude(id=self.id) \
+        .annotate(shared_genres=Count('genres', filter=Q(genres__in=self.genres.all()))) \
+        .order_by('-shared_genres', '-users_added_count')[:10]
+
+        return similar_shows
 
 
 class Episode(models.Model):
@@ -64,6 +75,13 @@ class Movie(models.Model):
     def __str__(self):
         return self.name
 
+    def get_similar_movies(self):
+        similar_movies = Movie.objects.filter(
+                            genres__in=self.genres.all()
+                        ).exclude(id=self.id).distinct()\
+                        .annotate(shared_genres=Count('genres', filter=Q(genres__in=self.genres.all())))\
+                        .order_by('-shared_genres', '-added_count')[:10]                       
+        return similar_movies
 
 class Actor(models.Model):
     name = models.CharField(max_length=255)
