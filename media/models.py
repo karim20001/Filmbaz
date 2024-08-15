@@ -1,6 +1,8 @@
 from django.db import models
 from uuid import uuid4
 from django.conf import settings
+import os
+from django.core.files.storage import default_storage
 from django.core.validators import MaxValueValidator
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -21,6 +23,7 @@ class Show(models.Model):
     imdb_rate = models.DecimalField(max_digits=2, decimal_places=1)
     users_rate = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     release_year = models.IntegerField()
+    end_year = models.IntegerField(null=True, blank=True, default=None)
     duration = models.IntegerField()  # Duration in minutes
     release_time = models.TimeField()
     release_day = models.CharField(max_length=50)  # Example: "Monday"
@@ -42,6 +45,11 @@ class Show(models.Model):
 
         return similar_shows
 
+def episode_cover_upload_to(instance, filename):
+        """
+        Dynamically generates the path for the episode cover photo.
+        """
+        return f'shows/{instance.show.name}/season_{instance.season}/episodes/photos/{filename}'
 
 class Episode(models.Model):
     id = models.UUIDField(default=uuid4, primary_key=True)
@@ -53,10 +61,11 @@ class Episode(models.Model):
     release_date = models.DateField()
     name = models.CharField(max_length=255)
     description = models.TextField()
-    cover_photo = models.ImageField(upload_to=f'{show.name}/{season}/episodes/photos/', null=True, blank=True)
+    cover_photo = models.ImageField(upload_to=episode_cover_upload_to, null=True, blank=True)
 
     def __str__(self):
         return f"{self.show.name} S{self.season}E{self.episode_number} - {self.name}"
+
 
 
 class Movie(models.Model):
@@ -68,8 +77,8 @@ class Movie(models.Model):
     description = models.TextField()
     release_date = models.DateField()
     genres = models.ManyToManyField(Genre)
-    rate_count = models.PositiveIntegerField(default=0)
-    added_count = models.PositiveIntegerField(default=0)
+    users_rate_count = models.PositiveIntegerField(default=0)
+    users_added_count = models.PositiveIntegerField(default=0)
     cover_photo = models.ImageField(upload_to='movies/photos/', null=True, blank=True)
 
     def __str__(self):
@@ -85,6 +94,7 @@ class Movie(models.Model):
 
 class Actor(models.Model):
     name = models.CharField(max_length=255)
+    bio = models.TextField(null=True, blank=True)
     birth_date = models.DateField()
     birth_city = models.CharField(max_length=255)
     profile_photo = models.ImageField(upload_to='actors/photos/', null=True, blank=True)
@@ -119,7 +129,7 @@ class UserShow(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='user_shows', on_delete=models.CASCADE)
     show = models.ForeignKey(Show, related_name='user_shows', on_delete=models.CASCADE)
     added_date = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default=WATCHING)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default=None)
     is_favorite = models.BooleanField(default=False)
     user_rate = models.PositiveIntegerField(null=True, blank=True, validators=[MaxValueValidator(5)])
 
@@ -136,16 +146,18 @@ class UserEpisode(models.Model):
     favorite_cast = models.ForeignKey(Cast, related_name='favorite_episode_cast', on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.user.username} - {self.episode.name}"
+        return f"{self.user.username} - {self.episode.name} | {self.episode.show.name}"
 
 
 class UserMovie(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='user_movies', on_delete=models.CASCADE)
     movie = models.ForeignKey(Movie, related_name='user_movies', on_delete=models.CASCADE)
     watched = models.BooleanField(default=False)
+    watched_date = models.DateTimeField()
     user_rate = models.PositiveIntegerField(null=True, blank=True, validators=[MaxValueValidator(5)])
     emoji = models.CharField(max_length=50, null=True, blank=True)  # Example: "😀", "😢"
     is_favorite = models.BooleanField(default=False)
+    added_date = models.DateTimeField(auto_now_add=True)
     favorite_cast = models.ForeignKey(Cast, related_name='favorite_movie_cast', on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
@@ -155,6 +167,7 @@ class UserMovie(models.Model):
 class Follow(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='following', on_delete=models.CASCADE)
     follow = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='followers', on_delete=models.CASCADE)
+    follow_date = models.DateField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.user.username} follows {self.follow.username}"

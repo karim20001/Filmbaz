@@ -4,8 +4,9 @@ from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, Avg
 from django.forms.models import model_to_dict
 from django.conf import settings
+from datetime import datetime, timedelta
 from django.contrib.auth import get_user_model
-from .models import Movie, UserMovie, Cast, Actor, Genre, Comment, UserEpisode, UserShow, Episode, Show
+from .models import Movie, UserMovie, Cast, Actor, Genre, Comment, UserEpisode, UserShow, Episode, Show, Follow
 
 
 class MovieWatchListSerializer(serializers.HyperlinkedModelSerializer):
@@ -330,6 +331,166 @@ class SingleEpisodeSerializer(serializers.ModelSerializer):
             except UserEpisode.DoesNotExist:
                 pass
         return None
+
+
+class UserProfilePhoto(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = ['profile_photo']
+class LastWatchedUserSerializer(serializers.ModelSerializer):
+    user = UserProfilePhoto()
+    class Meta:
+        model = UserEpisode
+        fields = ['user']
+
+
+class ShowWithLastWatchersSerializer(serializers.ModelSerializer):
+    last_watchers = serializers.SerializerMethodField()
+    watching_or_finished_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Show
+        fields = ['id', 'name', 'last_watchers', 'watching_or_finished_count']
+
+    def get_last_watchers(self, obj):
+        user = self.context['request'].user
+        user_followings = Follow.objects.filter(user=user).values_list('follow_id', flat=True)
+
+        # Get the last 6 following users who watched any episode of this show
+        last_watchers = UserEpisode.objects.filter(
+            user__in=user_followings,
+            episode__show=obj           
+            ).select_related('user')\
+            .order_by('-watch_date')[:6]
+
+        return LastWatchedUserSerializer(last_watchers, many=True).data
+
+    def get_watching_or_finished_count(self, obj):
+        count = UserEpisode.objects.filter(
+            episode__show=obj
+        ).values('user').distinct().count()
+
+        return count
+
+
+class SeachShowSerializer(serializers.ModelSerializer):
+    is_added = serializers.SerializerMethodField()
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Show
+        fields = ['id', 'name', 'users_added_count', 'is_added', 'url']
+    
+    def get_is_added(self, obj):
+        user = self.context.get('request').user
+        return UserShow.objects.filter(user=user, show=obj).exists()
+    
+    def get_url(self, obj):
+        request = self.context.get('request')
+        return request.build_absolute_uri(f'/series/{obj.id}')
+
+class SeachMovieSerializer(serializers.ModelSerializer):
+    is_added = serializers.SerializerMethodField()
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Movie
+        fields = ['id', 'name', 'users_added_count', 'is_added', 'url']
+    
+    def get_is_added(self, obj):
+        user = self.context.get('request').user
+        return UserMovie.objects.filter(user=user, movie=obj).exists()
+    
+    def get_url(self, obj):
+        request = self.context.get('request')
+        return request.build_absolute_uri(f'/movie/{obj.id}')
+
+
+class SearchUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = ['username', 'first_name', 'last_name', 'profile_photo']
+
+
+# Watchers Section
+class WacherUserSerialzier(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = ['username', 'first_name', 'last_name', 'profile_photo']
+
+
+class WatcherEpisodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Episode
+        fields = ['season', 'episode_number'] 
+
+
+class WatchersSerializers(serializers.ModelSerializer):
+    user = WacherUserSerialzier()
+    episode = WatcherEpisodeSerializer()
+    time_since_watched = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserEpisode
+        fields = ['user', 'episode', 'time_since_watched']
+
+    def get_time_since_watched(self, obj):
+        now = datetime.now(obj.watch_date.tzinfo)
+        time_difference = now - obj.watch_date
+
+        # If time difference is less than 7 days, return the difference
+        if time_difference.days < 7:
+            return time_difference
+        
+        # Otherwise, return the added_date
+        return obj.watch_date
+
+
+###################################################################
+# Follow Serializer
+class FollowSerializer(serializers.ModelSerializer):
+    user = WacherUserSerialzier()
+    is_follow = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Follow
+        fields = ['user', 'is_follow', 'is_following']
+    
+    def get_is_follow(self, obj):
+        status = self.context.get('status')
+        if status == 'follower':
+            return Follow.objects.filter(user=obj.follow, follow=obj.user).exists()
+        elif status == 'following':
+            return Follow.objects.filter(user=obj.user, follow=obj.follow).exists()
+
+    def get_is_following(self, obj):
+        status = self.context.get('status')
+        if status == 'follower':
+            return Follow.objects.filter(user=obj.user, follow=obj.follow).exists()
+        elif status == 'following':
+            return Follow.objects.filter(user=obj.follow, follow=obj.user).exists()
+        
+#################################################
+# Actor Section
+
+class ActorShowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Show
+        fields = ['id', 'name', 'season_count', 'release_year', 'end_year', 'imdb_rate', 'cover_photo']
+
+class ActorMovieSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Movie
+        fields = ['id', 'name', 'release_date', 'imdb_rate', 'cover_photo']
+class ActorSerializer(serializers.ModelSerializer):
+    shows = ActorShowSerializer(many=True, read_only=True)
+    movies = ActorMovieSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Actor
+        fields = ['name', 'bio', 'birth_date', 'birth_city', 'profile_photo', 'shows', 'movies']
+
     # def get_watch_link(self, obj):
     #     request = self.context.get('request')
     #     user = request.user if request else None
