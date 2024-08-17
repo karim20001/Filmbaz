@@ -61,8 +61,8 @@ class SingleMovieSerializer(serializers.ModelSerializer):
         model = Movie
         depth = 1
         fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description',
-                  'release_date', 'genres', 'casts', 'rate_count', 'cover_photo',
-                  'added_count', 'users_rate_counts', 'favorite_cast_stats',
+                  'release_date', 'genres', 'casts', 'users_rate_count', 'cover_photo',
+                  'users_added_count', 'users_rate_counts', 'favorite_cast_stats',
                   'user_movie', 'emoji_stats', 'similar_movies']
     
     # depth = 1
