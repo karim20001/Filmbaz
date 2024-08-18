@@ -33,7 +33,7 @@ from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerial
                           WatchersSerializers,
                           FollowSerializer,
                           )
-from core.serializers import UserGetSerializer, UserUpdateSerializer
+from core.serializers import SimpleUserSerializer, UserGetSerializer, UserUpdateSerializer
 from .permissions import AuthenticateOwnerComment, WatchedEpisodeByUser
 from .paginations import CustomPagination
 from .filters import ShowFilter, MovieFilter
@@ -809,8 +809,10 @@ class ProfileView(viewsets.GenericViewSet):
         return data
 
     def list(self, request):
+        user = request.user
         data = self.get_valid_data()
-        data['name'] = f'{request.user.first_name}'
+        user_serialzier = SimpleUserSerializer(user).data
+        data['user'] = user_serialzier
         return Response(data)
 
     def retrieve(self, request, pk=None):

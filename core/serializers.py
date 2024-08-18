@@ -2,6 +2,11 @@ from rest_framework import serializers
 from django.shortcuts import get_object_or_404
 from .models import CustomUser
 
+
+class SimpleUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ['first_name', 'profile_photo', 'cover_photo']
 class UserSignUpSerializer(serializers.ModelSerializer):
     password1 = serializers.CharField(write_only=True, required=True)
     password2 = serializers.CharField(write_only=True, required=True)
