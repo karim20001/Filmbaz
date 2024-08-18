@@ -33,7 +33,7 @@ from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerial
                           WatchersSerializers,
                           FollowSerializer,
                           )
-from core.serializers import UserSignUpSerializer
+from core.serializers import UserGetSerializer, UserUpdateSerializer
 from .permissions import AuthenticateOwnerComment, WatchedEpisodeByUser
 from .paginations import CustomPagination
 from .filters import ShowFilter, MovieFilter
@@ -696,7 +696,7 @@ class FilterMovieView(mixins.ListModelMixin,
 
 
 class ProfileView(viewsets.GenericViewSet):
-    serializer_class = UserSignUpSerializer
+    serializer_class = UserUpdateSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = CustomPagination
 
@@ -816,7 +816,13 @@ class ProfileView(viewsets.GenericViewSet):
         data['is_following'] = is_following
         return Response(data)
 
-    @action(detail=False, methods=['patch'], url_path='update')
+    @action(detail=False, methods=['get'], url_path='detail')
+    def get_profile(self, request):
+        user = request.user
+        serializer = UserGetSerializer(user).data
+        return Response(serializer)
+    
+    @action(detail=False, methods=['patch'], url_path='detail')
     def update_profile(self, request):
         user = request.user
         data = request.data
@@ -824,11 +830,12 @@ class ProfileView(viewsets.GenericViewSet):
         if not data['username']:
             data['username'] = user.username
 
-        if not (data['password1'] or data['password2']):
+        if not (data['password1'] or data['password2'] or data['password']):
+            data['password'] = user.password
             data['password1'] = user.password
             data['password2'] = user.password
 
-        serializer = UserSignUpSerializer(request.user, data=request.data, partial=True)
+        serializer = UserUpdateSerializer(request.user, data=request.data, context={'request': request}, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(status.HTTP_202_ACCEPTED)
