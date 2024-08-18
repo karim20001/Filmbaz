@@ -59,7 +59,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 class UserGetSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ['first_name', 'last_name', 'username', 'profile_photo', 'cover_photo', 'email', 'gender']
+        fields = ['first_name', 'last_name', 'username', 'profile_photo', 'cover_photo', 'email', 'gender', 'profile_photo', 'cover_photo']
 
 
 class UserLoginSerializer(serializers.ModelSerializer):

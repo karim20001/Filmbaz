@@ -469,6 +469,10 @@ class EpisodeView(
             UserShow.create(user=user, show=episode.show)
         
         UserEpisode.create(user=user, episode=episode)
+        user_show = UserShow.objects.filter(user=user, show=episode.show)
+        if user_show.status == None:
+            user_show.status = user_show.status.WATCHING
+            user_show.save()
 
         return Response({"detail": "Episode watched"}, status.HTTP_201_CREATED)
 
@@ -806,6 +810,7 @@ class ProfileView(viewsets.GenericViewSet):
 
     def list(self, request):
         data = self.get_valid_data()
+        data['name'] = f'{request.user.first_name}'
         return Response(data)
 
     def retrieve(self, request, pk=None):
