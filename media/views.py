@@ -772,7 +772,7 @@ class ProfileView(viewsets.GenericViewSet):
         follower_count = Follow.objects.filter(follow=user).count()
         following_count = Follow.objects.filter(user=user).count()
 
-        return {'movies': movies, 'favorite_movies': favorite_movies,
+        return {'movies': movies, 'favorite_movies': favorite_movies, 'user': user,
                 'shows': shows, 'favorite_shows': favorite_shows,
                 'movie_count': user_movie_stats['movie_count'], 'episode_count': user_episode_stats['episode_count'],
                 'show_time_spent': show_time_spent, 'movie_time_spent': movie_time_spent,
@@ -781,6 +781,7 @@ class ProfileView(viewsets.GenericViewSet):
     def get_valid_data(self):
         queryset = self.get_queryset()
 
+        serializer_user = SimpleUserSerializer(queryset.get('user')).data
         serializer_movie = SimilarMovieSerializer(queryset.get('movies'), many=True).data
         serializer_favorite_movie = SimilarMovieSerializer(queryset.get('favorite_movies'), many=True).data
         serializer_show = SimilarShowSerializer(queryset.get('shows'), many=True).data
@@ -789,6 +790,7 @@ class ProfileView(viewsets.GenericViewSet):
         show_time_spent = queryset.get('show_time_spent')
 
         data = {
+            'user': serializer_user,
             'movies': serializer_movie,
             'favorite_movies': serializer_favorite_movie,
             'movie_stats': {
