@@ -89,7 +89,7 @@ class Movie(models.Model):
                             genres__in=self.genres.all()
                         ).exclude(id=self.id).distinct()\
                         .annotate(shared_genres=Count('genres', filter=Q(genres__in=self.genres.all())))\
-                        .order_by('-shared_genres', '-added_count')[:10]                       
+                        .order_by('-shared_genres', '-users_added_count')[:10]                       
         return similar_movies
 
 class Actor(models.Model):

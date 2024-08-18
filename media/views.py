@@ -133,7 +133,7 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
 
         old_favorite_cast = user_movie.favorite_cast
         new_favorite_cast_id = data.get('favorite_cast')
-        content_type = ContentType.objects.get(model='episode').id
+        content_type = ContentType.objects.get(model='movie').id
 
         if Cast.objects.filter(id=new_favorite_cast_id, object_id=old_favorite_cast.id, content_type=content_type):
 
