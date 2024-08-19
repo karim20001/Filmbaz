@@ -129,7 +129,7 @@ class UserShow(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='user_shows', on_delete=models.CASCADE)
     show = models.ForeignKey(Show, related_name='user_shows', on_delete=models.CASCADE)
     added_date = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default=None)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default=None, null=True)
     is_favorite = models.BooleanField(default=False)
     user_rate = models.PositiveIntegerField(null=True, blank=True, validators=[MaxValueValidator(5)])
 

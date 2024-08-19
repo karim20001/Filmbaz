@@ -130,8 +130,8 @@ class SingleMovieSerializer(serializers.ModelSerializer):
 class SimpleUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
-        fields = ['id', 'first_name', 'profile_photo']
-        read_only_fields = ['id', 'first_name', 'profile_photo']
+        fields = ['user_name', 'first_name', 'profile_photo']
+        read_only_fields = ['user_name', 'first_name', 'profile_photo']
 
 class ReplySerializer(serializers.ModelSerializer):
     user = SimpleUserSerializer(read_only=True)
@@ -247,6 +247,7 @@ class UserShowSerializer(serializers.ModelSerializer):
         model = UserShow
         fields = ['user', 'show', 'added_date', 'status',
                   'is_favorite', 'user_rate']
+        read_only_fields = ['user', 'show']
 
 class EpisodeSerializer(serializers.ModelSerializer):
     user_watched = serializers.SerializerMethodField()

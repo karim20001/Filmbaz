@@ -34,7 +34,7 @@ from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerial
                           FollowSerializer,
                           )
 from core.serializers import SimpleUserSerializer, UserGetSerializer, UserUpdateSerializer
-from .permissions import AuthenticateOwnerComment, WatchedEpisodeByUser
+from .permissions import AuthenticateOwner, WatchedEpisodeByUser, WatchedShowByUser
 from .paginations import CustomPagination
 from .filters import ShowFilter, MovieFilter
 
@@ -194,7 +194,7 @@ class CommentViewSet(mixins.CreateModelMixin,
                      viewsets.GenericViewSet):
 
     serializer_class = CommentSerializer
-    permission_classes = [IsAuthenticated, AuthenticateOwnerComment]
+    permission_classes = [IsAuthenticated, AuthenticateOwner]
 
     def get_content_type(self):
         url = self.request.build_absolute_uri()
@@ -343,12 +343,9 @@ class ShowWatchListView(viewsets.GenericViewSet):
         return Response(response_data)
 
 
-class SingleShowView(mixins.CreateModelMixin,
-                     mixins.RetrieveModelMixin,
-                     mixins.DestroyModelMixin,
+class SingleShowView(mixins.DestroyModelMixin,
                      viewsets.GenericViewSet):
     
-    permission_classes = [IsAuthenticated]
     pagination_class = CustomPagination
 
     def get_queryset(self):
@@ -362,32 +359,50 @@ class SingleShowView(mixins.CreateModelMixin,
             return ShowSerializer
         else:
             return UserShowSerializer
+    
+    def get_permissions(self):
+        if self.action == 'partial_update':
+            permission_classes = [IsAuthenticated, WatchedShowByUser]
+        else:
+            permission_classes = [IsAuthenticated]
+            
+        return [permission() for permission in permission_classes]
 
     def perform_create(self, serializer):
         # Automatically set the user to the current authenticated user
         serializer.save(user=self.request.user)
-
-    def create(self, request, *args, **kwargs):
+    
+    @action(detail=True, methods=['post'])
+    def add(self, request, *args, **kwargs):
         # Extract the show ID from the URL's pk
         show_pk = kwargs.get('pk')
-        
-        # Ensure the user is set to the current authenticated user
-        data = request.data.copy()
-        data['user'] = request.user.pk
-        data['show'] = show_pk  # Set the show from the URL's pk
+        show = get_object_or_404(Show, id=show_pk)
 
-        serializer = self.get_serializer(data=data)
+        if UserShow.objects.filter(user=request.user, show=show).exists():
+            return Response({"detail": "already exists"}, status.HTTP_400_BAD_REQUEST)
+
+        UserShow.objects.create(user=request.user, show=show, status=None)
+        return Response(status=status.HTTP_201_CREATED)
+    
+    def retrieve(self, request, pk):
+        show = get_object_or_404(Show, id=pk)
+        serializer = self.get_serializer_class()
+        return Response(serializer(show).data)
+
+    def partial_update(self, request, pk):
+        show = get_object_or_404(Show, pk=pk)
+        user_show = get_object_or_404(UserShow, user=request.user, show=show)
+
+        serializer = UserShowSerializer(user_show, request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        serializer.save()
     
     def destroy(self, request, pk):
         show = get_object_or_404(Show, pk=pk)
         user_show = get_object_or_404(UserShow, user=request.user, show=show)
         user_show.delete()
         return Response({"message": "deleted"},  status.HTTP_204_NO_CONTENT)
+    
     
     @action(detail=True, methods=['get'])
     def watchers(self, request, pk):
@@ -443,11 +458,11 @@ class EpisodeView(
     
 
     def get_permissions(self):
-
         if self.action == 'destroy' or self.action == 'partial_update':
-            permission_classes = [IsAuthenticated, WatchedEpisodeByUser]
+            permission_classes = [IsAuthenticated, AuthenticateOwner, WatchedEpisodeByUser]
         else:
             permission_classes = [IsAuthenticated]
+
         return [permission() for permission in permission_classes]
     
     def list(self, request, series_pk=None):
@@ -569,7 +584,7 @@ class DiscoverView(viewsets.GenericViewSet):
         # 3. Trending Movies: Movies added by users in the last 3 months
         trending_movies = Movie.objects.filter(
             user_movies__added_date__gte=three_months_ago
-        ).order_by('-added_count')[:10]
+        ).order_by('-users_added_count')[:10]
 
         # Serialize the data
         top_shows_data = SimilarShowSerializer(top_shows, many=True).data

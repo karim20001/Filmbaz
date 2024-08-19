@@ -127,7 +127,7 @@ class MovieFilter(django_filters.FilterSet):
             # Order movies by the number of users that have added them
             return queryset.annotate(
                 added_count=Count('user_movies__user', distinct=True)
-            ).order_by('-added_count')
+            ).order_by('-users_added_count')
 
         return queryset
 
