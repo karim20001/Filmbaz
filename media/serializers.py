@@ -164,10 +164,11 @@ class SingleMovieSerializer(serializers.ModelSerializer):
 class MovieWithLastWatchersSerializer(serializers.ModelSerializer):
     last_watchers = serializers.SerializerMethodField()
     watchers_count = serializers.SerializerMethodField()
+    avg_users_rate = serializers.SerializerMethodField()
 
     class Meta:
         model = Movie
-        fields = ['id', 'name', 'last_watchers', 'watchers_count', 'cover_photo']
+        fields = ['id', 'name', 'last_watchers', 'watchers_count', 'avg_users_rate', 'cover_photo']
 
     def get_last_watchers(self, obj):
         user = self.context['request'].user
@@ -190,6 +191,14 @@ class MovieWithLastWatchersSerializer(serializers.ModelSerializer):
         ).values('user').distinct().count()
 
         return count
+
+    def get_avg_users_rate(self, obj):
+        avg_rate = UserMovie.objects.filter(
+            movie=obj,
+            watched=True,
+            user_rate__isnull=False
+        ).aggregate(Avg('user_rate', default=0))
+        return int(avg_rate['user_rate__avg'] * 20)
 
 
 class SimpleUserSerializer(serializers.ModelSerializer):
@@ -410,10 +419,11 @@ class SingleEpisodeSerializer(serializers.ModelSerializer):
 class ShowWithLastWatchersSerializer(serializers.ModelSerializer):
     last_watchers = serializers.SerializerMethodField()
     watching_or_finished_count = serializers.SerializerMethodField()
+    average_users_rate = serializers.SerializerMethodField()
 
     class Meta:
         model = Show
-        fields = ['id', 'name', 'last_watchers', 'watching_or_finished_count', 'cover_photo']
+        fields = ['id', 'name', 'last_watchers', 'watching_or_finished_count', 'average_users_rate', 'cover_photo']
 
     def get_last_watchers(self, obj):
         user = self.context['request'].user
@@ -434,15 +444,22 @@ class ShowWithLastWatchersSerializer(serializers.ModelSerializer):
         ).values('user').distinct().count()
 
         return count
+    
+    def get_average_users_rate(self, obj):
+        avg_rate = UserEpisode.objects.filter(
+            episode__show=obj,
+            user_rate__isnull=False
+        ).aggregate(Avg('user_rate', default=0))
+        return int(avg_rate['user_rate__avg'] * 20)
 
 
-class SeachShowSerializer(serializers.ModelSerializer):
+class SearchShowSerializer(serializers.ModelSerializer):
     is_added = serializers.SerializerMethodField()
     url = serializers.SerializerMethodField()
 
     class Meta:
         model = Show
-        fields = ['id', 'name', 'users_added_count', 'is_added', 'url']
+        fields = ['id', 'name', 'users_added_count', 'is_added', 'cover_photo', 'url']
     
     def get_is_added(self, obj):
         user = self.context.get('request').user
@@ -452,13 +469,13 @@ class SeachShowSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         return request.build_absolute_uri(f'/series/{obj.id}')
 
-class SeachMovieSerializer(serializers.ModelSerializer):
+class SearchMovieSerializer(serializers.ModelSerializer):
     is_added = serializers.SerializerMethodField()
     url = serializers.SerializerMethodField()
 
     class Meta:
         model = Movie
-        fields = ['id', 'name', 'users_added_count', 'is_added', 'url']
+        fields = ['id', 'name', 'users_added_count', 'is_added', 'cover_photo', 'url']
     
     def get_is_added(self, obj):
         user = self.context.get('request').user

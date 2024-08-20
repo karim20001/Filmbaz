@@ -27,8 +27,8 @@ from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerial
                           SimilarShowSerializer,
                           SimilarMovieSerializer,
                           ShowWithLastWatchersSerializer,
-                          SeachMovieSerializer,
-                          SeachShowSerializer,
+                          SearchMovieSerializer,
+                          SearchShowSerializer,
                           SearchUserSerializer,
                           WatchersSerializers,
                           FollowSerializer,
@@ -61,7 +61,7 @@ class MovieWatchListView(viewsets.ReadOnlyModelViewSet):
     def upcoming(self, request):
         user_movies = UserMovie.objects.filter(user=request.user, watched=False)
         movie_ids = user_movies.values_list('movie_id', flat=True)
-        movies = Movie.objects.filter(id__in=movie_ids, release_date__gte=datetime.date.today())
+        movies = Movie.objects.filter(id__in=movie_ids, release_date__gt=datetime.date.today())
         serializer = self.get_serializer(movies, many=True)
         return Response(serializer.data)
 
@@ -720,9 +720,9 @@ class SearchView(viewsets.GenericViewSet):
         serialized_data = []
         for item in paginated_results:
             if isinstance(item, Movie):
-                serialized_data.append(SeachMovieSerializer(item, context={'request': request}).data)
+                serialized_data.append(SearchMovieSerializer(item, context={'request': request}).data)
             elif isinstance(item, Show):
-                serialized_data.append(SeachShowSerializer(item, context={'request': request}).data)
+                serialized_data.append(SearchShowSerializer(item, context={'request': request}).data)
 
         return paginator.get_paginated_response(serialized_data)
 
@@ -746,7 +746,7 @@ class FilterShowView(mixins.ListModelMixin,
                      viewsets.GenericViewSet):
     queryset = Show.objects.all()
     permission_classes = [IsAuthenticated]
-    serializer_class = SeachShowSerializer
+    serializer_class = SearchShowSerializer
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_class = ShowFilter
@@ -772,7 +772,7 @@ class FilterMovieView(mixins.ListModelMixin,
                       viewsets.GenericViewSet):
     queryset = Movie.objects.all()
     permission_classes = [IsAuthenticated]
-    serializer_class = SeachMovieSerializer
+    serializer_class = SearchMovieSerializer
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend]
     filterset_class = MovieFilter
