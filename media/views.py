@@ -72,8 +72,6 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
     queryset = Movie.objects.all()
     permission_classes = [IsAuthenticated]
 
-   
-
     def get_serializer_context(self):
         return {'request': self.request}
 
@@ -86,17 +84,17 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
         referer = request.META.get('HTTP_REFERER')
         return referer if referer else '/'
     
-
-    
-    def create(self, request, *args, **kwargs):
+    @action(detail=True, methods=['post'])
+    def add(self, request, *args, **kwargs):
         movie = self.get_object()
         user = request.user
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(user=user, movie=movie)
+        if UserMovie.objects.filter(movie=movie, user=user).exists():
+            return Response({"detail": "already exists"}, status.HTTP_400_BAD_REQUEST)
+        
+        UserMovie.objects.create(movie=movie, user=user)
         movie.users_added_count += 1
         movie.save()
-        return redirect(self.get_redirect_url(request))
+        return Response(status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, *args, **kwargs):
         movie = self.get_object()
@@ -395,6 +393,8 @@ class SingleShowView(mixins.DestroyModelMixin,
             return Response({"detail": "already exists"}, status.HTTP_400_BAD_REQUEST)
 
         UserShow.objects.create(user=request.user, show=show, status=None)
+        show.users_added_count += 1
+        show.save()
         return Response(status=status.HTTP_201_CREATED)
     
     def retrieve(self, request, pk):
@@ -414,6 +414,8 @@ class SingleShowView(mixins.DestroyModelMixin,
         show = get_object_or_404(Show, pk=pk)
         user_show = get_object_or_404(UserShow, user=request.user, show=show)
         user_show.delete()
+        show.users_added_count -= 1
+        show.save()
         return Response({"message": "deleted"},  status.HTTP_204_NO_CONTENT)
     
     
@@ -495,6 +497,8 @@ class EpisodeView(
 
         if not UserShow.objects.filter(user=user, show=episode.show).exists():
             UserShow.create(user=user, show=episode.show)
+            episode.show.users_added_count += 1
+            episode.show.save()
         
         UserEpisode.create(user=user, episode=episode)
         user_show = UserShow.objects.filter(user=user, show=episode.show)
@@ -600,9 +604,9 @@ class DiscoverView(viewsets.GenericViewSet):
         ).order_by('-users_added_count')[:10]
 
         # Serialize the data
-        top_shows_data = SimilarShowSerializer(top_shows, many=True).data
-        trending_shows_data = SimilarShowSerializer(trending_shows, many=True).data
-        trending_movies_data = SimilarMovieSerializer(trending_movies, many=True).data
+        top_shows_data = SimilarShowSerializer(top_shows, many=True, context={'user': user}).data
+        trending_shows_data = SimilarShowSerializer(trending_shows, many=True, context={'user': user}).data
+        trending_movies_data = SimilarMovieSerializer(trending_movies, many=True, context={'user': user}).data
 
         user_followings = Follow.objects.filter(user=user).values_list('follow_id', flat=True)
         last_watched_shows = UserEpisode.objects.filter(
@@ -810,10 +814,10 @@ class ProfileView(viewsets.GenericViewSet):
         queryset = self.get_queryset()
 
         serializer_user = SimpleUserSerializer(queryset.get('user')).data
-        serializer_movie = SimilarMovieSerializer(queryset.get('movies'), many=True).data
-        serializer_favorite_movie = SimilarMovieSerializer(queryset.get('favorite_movies'), many=True).data
-        serializer_show = SimilarShowSerializer(queryset.get('shows'), many=True).data
-        serializer_favorite_show = SimilarShowSerializer(queryset.get('favorite_shows'), many=True).data
+        serializer_movie = SimilarMovieSerializer(queryset.get('movies'), many=True, context={'user': queryset.get('user')}).data
+        serializer_favorite_movie = SimilarMovieSerializer(queryset.get('favorite_movies'), many=True, context={'user': queryset.get('user')}).data
+        serializer_show = SimilarShowSerializer(queryset.get('shows'), many=True, context={'user': queryset.get('user')}).data
+        serializer_favorite_show = SimilarShowSerializer(queryset.get('favorite_shows'), many=True, context={'user': queryset.get('user')}).data
         movie_time_spent = queryset.get('movie_time_spent')
         show_time_spent = queryset.get('show_time_spent')
 
@@ -900,8 +904,8 @@ class ProfileView(viewsets.GenericViewSet):
         unwatched_movies = Movie.objects.filter(user_movies__user=user, user_movies__watched=False)\
             .order_by('user_movies__added_date')
 
-        serialized_watched = SimilarMovieSerializer(watched_movies, many=True).data
-        serialized_unwatched = SimilarMovieSerializer(unwatched_movies, many=True).data
+        serialized_watched = SimilarMovieSerializer(watched_movies, many=True, context={'user': user}).data
+        serialized_unwatched = SimilarMovieSerializer(unwatched_movies, many=True, context={'user': user}).data
 
         data = {
             'watched_movies': serialized_watched,
@@ -986,7 +990,7 @@ class ProfileView(viewsets.GenericViewSet):
         """ Serialize the annotated queryset data into a dictionary with relevant fields. """
         return [
             {
-                'show': SimilarShowSerializer(show).data,
+                'show': SimilarShowSerializer(show, context={'user': None}).data,
                 'watched_percentage': show.watched_percentage if show.total_episodes > 0 else 0,
                 # 'last_watched_episode_date': show.last_watched_episode_date,
                 # 'total_episodes': show.total_episodes,

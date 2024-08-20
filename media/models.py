@@ -156,7 +156,7 @@ class UserMovie(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='user_movies', on_delete=models.CASCADE)
     movie = models.ForeignKey(Movie, related_name='user_movies', on_delete=models.CASCADE)
     watched = models.BooleanField(default=False)
-    watched_date = models.DateTimeField()
+    watched_date = models.DateTimeField(default=None, blank=True, null=True)
     user_rate = models.PositiveIntegerField(null=True, blank=True, validators=[MaxValueValidator(5)])
     emoji = models.CharField(max_length=50, null=True, blank=True)  # Example: "😀", "😢"
     is_favorite = models.BooleanField(default=False)

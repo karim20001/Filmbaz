@@ -40,9 +40,16 @@ class SimpleCastSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'actor', 'photo']
 
 class SimilarMovieSerializer(serializers.ModelSerializer):
+    is_added = serializers.SerializerMethodField()
     class Meta:
         model = Movie
-        fields = ['id', 'name', 'cover_photo']
+        fields = ['id', 'name', 'is_added', 'cover_photo']
+    
+    def get_is_added(self, obj):
+        user = self.context.get('user')
+        if user:
+            return UserMovie.objects.filter(user=user, movie=obj).exists()
+        return None
 
 class SingleMovieSerializer(serializers.ModelSerializer):
     genres = GenreSerializer()
@@ -195,9 +202,17 @@ class SeasonSerializer(serializers.Serializer):
 
 
 class SimilarShowSerializer(serializers.ModelSerializer):
+    is_added = serializers.SerializerMethodField()
+
     class Meta:
         model = Show
-        fields = ['id', 'name', 'cover_photo']
+        fields = ['id', 'name', 'is_added', 'cover_photo']
+    
+    def get_is_added(self, obj):
+        user = self.context.get('user')
+        if user:
+            return UserShow.objects.filter(user=user, show=obj).exists()
+        return None
 
 
 class ShowSerializer(serializers.ModelSerializer):
