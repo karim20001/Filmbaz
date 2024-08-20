@@ -27,6 +27,7 @@ class Show(models.Model):
     duration = models.IntegerField()  # Duration in minutes
     release_time = models.TimeField()
     release_day = models.CharField(max_length=50)  # Example: "Monday"
+    is_released = models.BooleanField()
     users_added_count = models.PositiveIntegerField(default=0)
     users_rate_count = models.PositiveIntegerField(default=0)
     genres = models.ManyToManyField(Genre)
@@ -59,6 +60,7 @@ class Episode(models.Model):
     users_rate = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     episode_number = models.IntegerField()
     release_date = models.DateField()
+    is_released = models.BooleanField()
     name = models.CharField(max_length=255)
     description = models.TextField()
     cover_photo = models.ImageField(upload_to=episode_cover_upload_to, null=True, blank=True)
@@ -76,6 +78,7 @@ class Movie(models.Model):
     users_rate = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     description = models.TextField()
     release_date = models.DateField()
+    is_released = models.BooleanField()
     genres = models.ManyToManyField(Genre)
     users_rate_count = models.PositiveIntegerField(default=0)
     users_added_count = models.PositiveIntegerField(default=0)

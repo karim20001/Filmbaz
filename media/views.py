@@ -341,6 +341,19 @@ class ShowWatchListView(viewsets.GenericViewSet):
         }
 
         return Response(response_data)
+    
+    @action(detail=False, methods=['get'])
+    def upcoming(self, request):
+        user = request.user
+        compelet_watched_shows = Show.objects.annotate(
+            count_show_episodes = Count('episodes', filter=Q(episodes__is_released=True), distinct=True),
+            count_user_episodes = Count('episodes', filter=Q(episodes__is_released=True, episodes__user_episodes__user=user), distinct=True)
+        ).filter(count_show_episodes=F('count_user_episodes'))
+
+        episodes = Episode.objects.filter(show__in=compelet_watched_shows, is_released=False)
+
+        serializer = self.get_serializer(episodes, many=True)
+        return Response(serializer.data)
 
 
 class SingleShowView(mixins.DestroyModelMixin,
