@@ -14,7 +14,7 @@ from django.db.models import Count, Q, OuterRef, Subquery, Max, Sum, F, Expressi
 import datetime
 from django.contrib.auth import get_user_model
 from .models import Actor, UserMovie, Movie, Cast, Comment, UserEpisode, Episode, Show, UserShow, Genre, Follow
-from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerializer, MovieWatchListSerializer,
+from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerializer, MovieWatchListSerializer, MovieWatchersSerializers, MovieWithLastWatchersSerializer,
                           SingleMovieSerializer,
                           UserMovieSerialzier,
                           CommentSerializer,
@@ -54,7 +54,7 @@ class MovieWatchListView(viewsets.ReadOnlyModelViewSet):
         user_movies = UserMovie.objects.filter(user=request.user, watched=False)
         movie_ids = user_movies.values_list('movie_id', flat=True)
         movies = Movie.objects.filter(id__in=movie_ids, release_date__lte=datetime.date.today())
-        serializer = MovieWatchListSerializer(movies, many=True, context={'request': request})
+        serializer = self.get_serializer(movies, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
@@ -62,7 +62,7 @@ class MovieWatchListView(viewsets.ReadOnlyModelViewSet):
         user_movies = UserMovie.objects.filter(user=request.user, watched=False)
         movie_ids = user_movies.values_list('movie_id', flat=True)
         movies = Movie.objects.filter(id__in=movie_ids, release_date__gte=datetime.date.today())
-        serializer = MovieWatchListSerializer(movies, many=True, context={'request': request})
+        serializer = self.get_serializer(movies, many=True)
         return Response(serializer.data)
 
 
@@ -71,6 +71,7 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
     
     queryset = Movie.objects.all()
     permission_classes = [IsAuthenticated]
+    pagination_class = CustomPagination
 
     def get_serializer_context(self):
         return {'request': self.request}
@@ -110,19 +111,21 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
         if watched_status is not None:
             if not watched_status and user_movie.watched:
                 # Update likes for favorite_cast and users_rate for movie
-                self.update_likes_and_rate(movie, user_movie, decrement=True)
+                # self.update_likes_and_rate(movie, user_movie, decrement=True)
                 
                 # Reset all other fields to None if watched status is changed to False
                 user_movie.is_favorite = None
                 user_movie.user_rate = None
                 user_movie.emoji = None
                 user_movie.favorite_cast = None
+                user_movie.watched_date = None
 
                 user_movie.watched = watched_status
                 user_movie.save()
                 return Response({'message': 'Watched status updated and user movie data reset!'}, status=status.HTTP_200_OK)
             else:
                 user_movie.watched = watched_status
+                user_movie.watched_date = datetime.datetime.now()
                 user_movie.save()
                 return Response({'message': 'Watched status updated!'}, status=status.HTTP_200_OK)
 
@@ -137,18 +140,18 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
 
             if new_favorite_cast_id and (not old_favorite_cast or new_favorite_cast_id != old_favorite_cast.id):
                 new_favorite_cast = get_object_or_404(Cast, id=new_favorite_cast_id)
-                self.update_likes_for_favorite_cast(old_favorite_cast, new_favorite_cast)
+                # self.update_likes_for_favorite_cast(old_favorite_cast, new_favorite_cast)
 
                 user_movie.favorite_cast = new_favorite_cast
         else:
             return Response({"detail": "cast is not related"}, status.HTTP_400_BAD_REQUEST)
         
-        old_user_rate = user_movie.user_rate
-        new_user_rate = data.get('user_rate')
+        # old_user_rate = user_movie.user_rate
+        # new_user_rate = data.get('user_rate')
 
-        if new_user_rate is not None and new_user_rate != old_user_rate:
-            user_movie.user_rate = new_user_rate
-            self.update_users_rate(movie, old_user_rate, new_user_rate)
+        # if new_user_rate is not None and new_user_rate != old_user_rate:
+        #     user_movie.user_rate = new_user_rate
+        #     self.update_users_rate(movie, old_user_rate, new_user_rate)
 
         serializer = self.get_serializer(user_movie, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -161,8 +164,8 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
 
         try:
             user_movie = UserMovie.objects.get(user=user, movie=movie)
-            if user_movie.watched:
-                self.update_likes_and_rate(movie, user_movie, decrement=True)
+            # if user_movie.watched:
+            #     self.update_likes_and_rate(movie, user_movie, decrement=True)
             user_movie.delete()
             movie.users_added_count -= 1
             movie.save()
@@ -170,19 +173,64 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
         except UserMovie.DoesNotExist:
             return Response({'message': 'Movie not added yet!'}, status=status.HTTP_400_BAD_REQUEST)
 
-    def update_likes_for_favorite_cast(self, old_cast, new_cast):
-        if old_cast:
-            old_cast.likes -= 1
-            old_cast.save()
-        new_cast.likes += 1
-        new_cast.save()
+    @action(detail=True, methods=['get'])
+    def watchers(self, request, pk):
+        movie = get_object_or_404(Movie, pk=pk)
 
-    def update_users_rate(self, movie, old_rate, new_rate):
-        if old_rate is not None:
-            movie.users_rate = ((movie.users_rate * movie.usermovie_set.count()) - old_rate + new_rate) / movie.usermovie_set.count()
-        else:
-            movie.users_rate = ((movie.users_rate * (movie.usermovie_set.count() - 1)) + new_rate) / movie.usermovie_set.count()
-        movie.save()
+        # Get the list of users that the current user is following
+        following_users = request.user.following.values_list('follow', flat=True)
+
+        # Query to get the last watched episode for each following user in the specific series
+        queryset = UserMovie.objects.filter(
+            movie=movie,
+            user__in=following_users,
+            watched=True
+        ).annotate(
+            latest_watch_date=Max('watched_date')
+        ).order_by('-latest_watch_date')
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = MovieWatchersSerializers(page, many=True)
+            return self.get_paginated_response({
+                'name': movie.name,
+                'watchers': serializer.data
+            })
+
+        serializer = MovieWatchersSerializers(queryset, many=True)
+        return Response({
+                'name': movie.name,
+                'watchers': serializer.data
+            })
+
+    # def update_likes_for_favorite_cast(self, old_cast, new_cast):
+    #     if old_cast:
+    #         old_cast.likes -= 1
+    #         old_cast.save()
+    #     new_cast.likes += 1
+    #     new_cast.save()
+
+    # def update_users_rate(self, movie, old_rate, new_rate):
+    #     if old_rate is not None:
+    #         movie.users_rate = ((movie.users_rate * movie.usermovie_set.count()) - old_rate + new_rate) / movie.usermovie_set.count()
+    #     else:
+    #         movie.users_rate = ((movie.users_rate * (movie.usermovie_set.count() - 1)) + new_rate) / movie.usermovie_set.count()
+    #     movie.save()
+    
+    # def update_likes_and_rate(self, movie, user_movie, decrement=False):
+    #     if user_movie.favorite_cast:
+    #         if decrement:
+    #             user_movie.favorite_cast.likes -= 1
+    #         else:
+    #             user_movie.favorite_cast.likes += 1
+    #         user_movie.favorite_cast.save()
+        
+    #     if user_movie.user_rate is not None:
+    #         all_ratings = list(UserMovie.objects.filter(movie=movie).exclude(user_rate=None).values_list('user_rate', flat=True))
+    #         if decrement:
+    #             all_ratings.remove(user_movie.user_rate)
+    #         movie.users_rate = sum(all_ratings) / len(all_ratings) if all_ratings else 0
+    #         movie.save()
 
 
 class CommentViewSet(mixins.CreateModelMixin,
@@ -474,7 +522,7 @@ class EpisodeView(
 
     def get_permissions(self):
         if self.action == 'destroy' or self.action == 'partial_update':
-            permission_classes = [IsAuthenticated, AuthenticateOwner, WatchedEpisodeByUser]
+            permission_classes = [IsAuthenticated, WatchedEpisodeByUser]
         else:
             permission_classes = [IsAuthenticated]
 
@@ -622,12 +670,27 @@ class DiscoverView(viewsets.GenericViewSet):
         # Serialize the shows and include the last 6 users who watched each show
         community_activity_data = ShowWithLastWatchersSerializer(shows, many=True, context={'request': request}).data
 
+        # Get the friends Movies
+        last_watched_movies = UserMovie.objects.filter(
+            user__in=user_followings,
+            watched=True
+        ).values('movie__id')\
+         .annotate(last_watch_date=Max('watched_date'))\
+         .order_by('-last_watch_date')[:10]
+        
+        movie_ids = [item['movie__id'] for item in last_watched_movies]
+        movies = Movie.objects.filter(id__in=movie_ids)
+
+        community_activity_movies_data = MovieWithLastWatchersSerializer(movies, many=True, context={'request': request}).data
+
+
         # Combine into a single response
         combined_response = {
             'top_shows': top_shows_data,
             'trending_shows': trending_shows_data,
             'trending_movies': trending_movies_data,
             'community_activity': community_activity_data,
+            'community_activity_movies': community_activity_movies_data
         }
 
         return Response(combined_response)
