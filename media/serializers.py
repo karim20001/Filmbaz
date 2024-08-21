@@ -93,7 +93,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
     class Meta:
         model = Movie
         depth = 1
-        fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description', 'is_watched',
+        fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description',
                   'release_date', 'genres', 'casts', 'users_rate_count', 'cover_photo',
                   'users_added_count', 'users_rate_counts', 'favorite_cast_stats',
                   'user_movie', 'emoji_stats', 'similar_movies']
@@ -417,18 +417,18 @@ class SingleEpisodeSerializer(serializers.ModelSerializer):
 
 
 class ShowWithLastWatchersSerializer(serializers.ModelSerializer):
-    # last_watchers = serializers.SerializerMethodField()
+    last_watchers = serializers.SerializerMethodField()
     watching_or_finished_count = serializers.SerializerMethodField()
     average_users_rate = serializers.SerializerMethodField()
     season_counts = serializers.IntegerField()
 
     class Meta:
         model = Show
-        fields = ['id', 'name', 'network', 'watching_or_finished_count', 'average_users_rate', 'season_counts', 'cover_photo']
+        fields = ['id', 'name', 'network', 'last_watchers', 'watching_or_finished_count', 'average_users_rate', 'season_counts', 'cover_photo']
 
-    # def get_last_watchers(self, obj):
-    #     last_watchers = self.context['last_watchers'].get(obj.id, [])
-    #     return LastWatchedUserSerializer(last_watchers, many=True).data
+    def get_last_watchers(self, obj):
+        last_watchers = self.context['last_watchers'].get(obj.id, [])
+        return LastWatchedUserSerializer(last_watchers, many=True).data
 
     def get_watching_or_finished_count(self, obj):
         return obj.watching_or_finished_count

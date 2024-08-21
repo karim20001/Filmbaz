@@ -690,7 +690,7 @@ class DiscoverView(viewsets.GenericViewSet):
                     UserEpisode.objects.filter(
                         user__in=user_followings,
                         episode__show=show
-                    ).select_related('user','episode', 'episode__show')\
+                    ).select_related('user')\
                         .order_by('-watch_date')[:6]
                 )
                 for show in show_ids
