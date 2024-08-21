@@ -55,7 +55,7 @@ class LastWatchedUserSerializer(serializers.ModelSerializer):
 class UserMovieSerialzier(serializers.ModelSerializer):
     class Meta:
         model = UserMovie
-        fields = ['watched', 'user_rate', 'emoji', 'is_favorite', 'favorite_cast']
+        fields = ['watched', 'user_rate', 'watched', 'emoji', 'is_favorite', 'favorite_cast']
 
 
 class SimpleCastSerializer(serializers.ModelSerializer):
@@ -93,7 +93,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
     class Meta:
         model = Movie
         depth = 1
-        fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description',
+        fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description', 'is_watched',
                   'release_date', 'genres', 'casts', 'users_rate_count', 'cover_photo',
                   'users_added_count', 'users_rate_counts', 'favorite_cast_stats',
                   'user_movie', 'emoji_stats', 'similar_movies']

@@ -691,7 +691,6 @@ class DiscoverView(viewsets.GenericViewSet):
                         user__in=user_followings,
                         episode__show=show
                     ).select_related('user','episode', 'episode__show')\
-                        .prefetch_related('watch_date')\
                         .order_by('-watch_date')[:6]
                 )
                 for show in show_ids
