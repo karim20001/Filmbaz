@@ -10,7 +10,8 @@ from django.utils import timezone
 from urllib.parse import urlparse
 from collections import defaultdict
 from operator import attrgetter
-from django.db.models import Count, Q, OuterRef, Subquery, Max, Sum, F, ExpressionWrapper, IntegerField
+from django.db.models import Count, Q, OuterRef, Subquery, Max, Sum, F, ExpressionWrapper, IntegerField, Prefetch, Avg
+from django.db.models.functions import Coalesce
 import datetime
 from django.contrib.auth import get_user_model
 from .models import Actor, UserMovie, Movie, Cast, Comment, UserEpisode, Episode, Show, UserShow, Genre, Follow
@@ -621,28 +622,35 @@ class EpisodeView(
 #discover Section
 
 class DiscoverView(viewsets.GenericViewSet):
-    queryset = Show.objects.all()
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        return Show.objects.none()
 
     def list(self, request):
         user = request.user
+        user_followings = list(Follow.objects.filter(user=user).values_list('follow_id', flat=True))
+
+        # Precompute and annotate fields in one go
+        annotated_shows = Show.objects.annotate(
+            watching_or_finished_count=Count('user_shows__user', distinct=True),
+            average_users_rate=Coalesce(
+                ExpressionWrapper(
+                    Avg('episodes__user_episodes__user_rate') * 20, output_field=IntegerField()
+                ), 0
+            ),
+            season_counts=Count('episodes__season', distinct=True)
+        )
 
         # 1. Top Shows: Shows with the most common genres that the user is watching
-        user_genres = Genre.objects.filter(
-            show__user_shows__user=user,
-            # show__user_shows__status=UserShow.WATCHING
-        ).distinct()
-
-        top_shows = Show.objects.filter(
-            genres__in=user_genres
-        ).annotate(
+        user_genres = Genre.objects.filter(show__user_shows__user=user).distinct()
+        top_shows = annotated_shows.filter(genres__in=user_genres).annotate(
             watch_count=Count('user_shows', filter=Q(user_shows__status=UserShow.WATCHING))
         ).order_by('-watch_count')[:10]
 
         # 2. Trending Shows: Shows added by users in the last 3 months
         three_months_ago = timezone.now() - datetime.timedelta(days=90)
-        trending_shows = Show.objects.filter(
+        trending_shows = annotated_shows.filter(
             user_shows__added_date__gte=three_months_ago
         ).order_by('-users_added_count')[:10]
 
@@ -651,38 +659,50 @@ class DiscoverView(viewsets.GenericViewSet):
             user_movies__added_date__gte=three_months_ago
         ).order_by('-users_added_count')[:10]
 
-        # Serialize the data
-        top_shows_data = SimilarShowSerializer(top_shows, many=True, context={'user': user}).data
-        trending_shows_data = SimilarShowSerializer(trending_shows, many=True, context={'user': user}).data
-        trending_movies_data = SimilarMovieSerializer(trending_movies, many=True, context={'user': user}).data
-
-        user_followings = Follow.objects.filter(user=user).values_list('follow_id', flat=True)
-        last_watched_shows = UserEpisode.objects.filter(
+        # 4. Last watched shows by friends
+        last_watched_shows_data = UserEpisode.objects.filter(
             user__in=user_followings
-        ).values('episode__show_id')\
-            .annotate(last_watch_date=Max('watch_date'))\
-            .order_by('-last_watch_date')[:10]
+        ).select_related('episode').values('episode__show_id').annotate(last_watch_date=Max('watch_date')).order_by('-last_watch_date')[:10]
 
-        # Get the Show objects for these shows
-        show_ids = [item['episode__show_id'] for item in last_watched_shows]
-        shows = Show.objects.filter(id__in=show_ids)
+        show_ids = [item['episode__show_id'] for item in last_watched_shows_data]
+        shows = annotated_shows.filter(id__in=show_ids).prefetch_related(
+            'genres',
+            Prefetch('user_shows', queryset=UserShow.objects.filter(user__in=user_followings))
+        )
 
-        # Serialize the shows and include the last 6 users who watched each show
-        community_activity_data = ShowWithLastWatchersSerializer(shows, many=True, context={'request': request}).data
-
-        # Get the friends Movies
+        # 5. Last watched movies by friends
         last_watched_movies = UserMovie.objects.filter(
             user__in=user_followings,
             watched=True
-        ).values('movie__id')\
-         .annotate(last_watch_date=Max('watched_date'))\
-         .order_by('-last_watch_date')[:10]
+        ).values('movie_id').annotate(last_watch_date=Max('watched_date')).order_by('-last_watch_date')[:10]
+
+        movie_ids = [item['movie_id'] for item in last_watched_movies]
+        movies = Movie.objects.filter(id__in=movie_ids).prefetch_related(
+            'genres',
+            Prefetch('user_movies', queryset=UserMovie.objects.filter(user__in=user_followings))
+        )
+        # Serialize the data
+        context = {
+            'request': request,
+            'user_followings': user_followings,
+            'last_watchers': {
+                show: list(
+                    UserEpisode.objects.filter(
+                        user__in=user_followings,
+                        episode__show=show
+                    ).select_related('user','episode', 'episode__show')\
+                        .prefetch_related('watch_date')\
+                        .order_by('-watch_date')[:6]
+                )
+                for show in show_ids
+            }
+        }
         
-        movie_ids = [item['movie__id'] for item in last_watched_movies]
-        movies = Movie.objects.filter(id__in=movie_ids)
-
-        community_activity_movies_data = MovieWithLastWatchersSerializer(movies, many=True, context={'request': request}).data
-
+        top_shows_data = SimilarShowSerializer(top_shows, many=True, context=context).data
+        trending_shows_data = SimilarShowSerializer(trending_shows, many=True, context=context).data
+        trending_movies_data = SimilarMovieSerializer(trending_movies, many=True, context=context).data
+        community_activity_data = ShowWithLastWatchersSerializer(shows, many=True, context=context).data
+        community_activity_movies_data = MovieWithLastWatchersSerializer(movies, many=True, context=context).data
 
         # Combine into a single response
         combined_response = {

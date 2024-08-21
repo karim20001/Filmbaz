@@ -28,6 +28,7 @@ class Show(models.Model):
     release_time = models.TimeField()
     release_day = models.CharField(max_length=50)  # Example: "Monday"
     is_released = models.BooleanField()
+    network = models.CharField(max_length=255, null=True, blank=True)
     users_added_count = models.PositiveIntegerField(default=0)
     users_rate_count = models.PositiveIntegerField(default=0)
     genres = models.ManyToManyField(Genre)

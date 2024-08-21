@@ -197,7 +197,7 @@ class MovieWithLastWatchersSerializer(serializers.ModelSerializer):
             movie=obj,
             watched=True,
             user_rate__isnull=False
-        ).aggregate(Avg('user_rate', default=0))
+        ).select_related('movie').prefetch_related('user_rate').aggregate(Avg('user_rate', default=0))
         return int(avg_rate['user_rate__avg'] * 20)
 
 
@@ -417,40 +417,24 @@ class SingleEpisodeSerializer(serializers.ModelSerializer):
 
 
 class ShowWithLastWatchersSerializer(serializers.ModelSerializer):
-    last_watchers = serializers.SerializerMethodField()
+    # last_watchers = serializers.SerializerMethodField()
     watching_or_finished_count = serializers.SerializerMethodField()
     average_users_rate = serializers.SerializerMethodField()
+    season_counts = serializers.IntegerField()
 
     class Meta:
         model = Show
-        fields = ['id', 'name', 'last_watchers', 'watching_or_finished_count', 'average_users_rate', 'cover_photo']
+        fields = ['id', 'name', 'network', 'watching_or_finished_count', 'average_users_rate', 'season_counts', 'cover_photo']
 
-    def get_last_watchers(self, obj):
-        user = self.context['request'].user
-        user_followings = Follow.objects.filter(user=user).values_list('follow_id', flat=True)
-
-        # Get the last 6 following users who watched any episode of this show
-        last_watchers = UserEpisode.objects.filter(
-            user__in=user_followings,
-            episode__show=obj           
-            ).select_related('user')\
-            .order_by('-watch_date')[:6]
-
-        return LastWatchedUserSerializer(last_watchers, many=True).data
+    # def get_last_watchers(self, obj):
+    #     last_watchers = self.context['last_watchers'].get(obj.id, [])
+    #     return LastWatchedUserSerializer(last_watchers, many=True).data
 
     def get_watching_or_finished_count(self, obj):
-        count = UserEpisode.objects.filter(
-            episode__show=obj
-        ).values('user').distinct().count()
-
-        return count
+        return obj.watching_or_finished_count
     
     def get_average_users_rate(self, obj):
-        avg_rate = UserEpisode.objects.filter(
-            episode__show=obj,
-            user_rate__isnull=False
-        ).aggregate(Avg('user_rate', default=0))
-        return int(avg_rate['user_rate__avg'] * 20)
+        return obj.average_users_rate
 
 
 class SearchShowSerializer(serializers.ModelSerializer):
