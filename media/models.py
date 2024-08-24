@@ -19,6 +19,7 @@ class Genre(models.Model):
 class Show(models.Model):
     id = models.UUIDField(default=uuid4, primary_key=True)
     name = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
     season_count = models.IntegerField(default=1)
     imdb_rate = models.DecimalField(max_digits=2, decimal_places=1)
     users_rate = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)

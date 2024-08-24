@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.fields import CurrentUserDefault
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Count, Avg
+from django.db.models import Count, Avg, Exists, OuterRef
 from django.forms.models import model_to_dict
 from django.conf import settings
 from datetime import datetime, timedelta
@@ -15,13 +15,13 @@ class GenreSerializer(serializers.ModelSerializer):
         fields = ['name']
 
 
-class MovieWatchListSerializer(serializers.HyperlinkedModelSerializer):
+class MovieWatchListSerializer(serializers.ModelSerializer):
     genres = GenreSerializer()
     time_to_release = serializers.SerializerMethodField()
 
     class Meta:
         model = Movie
-        fields = ['url', 'name', 'genres', 'duration', 'time_to_release', 'cover_photo']
+        fields = ['id', 'name', 'genres', 'duration', 'time_to_release', 'cover_photo']
     
     def get_time_to_release(self, obj):
         # Calculate the number of days until the movie's release
@@ -66,16 +66,11 @@ class SimpleCastSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'actor', 'photo']
 
 class SimilarMovieSerializer(serializers.ModelSerializer):
-    is_added = serializers.SerializerMethodField()
+    is_added = serializers.BooleanField()
     class Meta:
         model = Movie
         fields = ['id', 'name', 'is_added', 'cover_photo']
-    
-    def get_is_added(self, obj):
-        user = self.context.get('user')
-        if user:
-            return UserMovie.objects.filter(user=user, movie=obj).exists()
-        return None
+
 
 class SingleMovieSerializer(serializers.ModelSerializer):
     genres = GenreSerializer()
@@ -83,6 +78,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
     # add_link = serializers.SerializerMethodField()
     # add_favorite = serializers.SerializerMethodField()
     casts = serializers.SerializerMethodField()
+    is_watched = serializers.SerializerMethodField()
     # remove_link = serializers.SerializerMethodField()
     user_movie = serializers.SerializerMethodField()
     users_rate_counts = serializers.SerializerMethodField()
@@ -94,7 +90,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
         model = Movie
         depth = 1
         fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description',
-                  'release_date', 'genres', 'casts', 'users_rate_count', 'cover_photo',
+                  'release_date', 'genres', 'casts', 'is_watched', 'users_rate_count', 'cover_photo',
                   'users_added_count', 'users_rate_counts', 'favorite_cast_stats',
                   'user_movie', 'emoji_stats', 'similar_movies']
     
@@ -157,48 +153,30 @@ class SingleMovieSerializer(serializers.ModelSerializer):
         return None
     
     def get_similar_movies(self, obj):
-        similar_movies = obj.get_similar_movies()
+        user = self.context['request'].user
+        similar_movies = obj.get_similar_movies().annotate(
+            is_added=Exists(UserMovie.objects.filter(user=user, movie=OuterRef('pk')))
+        )
         return SimilarMovieSerializer(similar_movies, many=True).data
+    
+    def get_is_watched(self, obj):
+        request = self.context['request']
+        return UserMovie.objects.filter(user=request.user, movie=obj, watched=True).exists()
     
 
 class MovieWithLastWatchersSerializer(serializers.ModelSerializer):
     last_watchers = serializers.SerializerMethodField()
-    watchers_count = serializers.SerializerMethodField()
-    avg_users_rate = serializers.SerializerMethodField()
+    watchers_count = serializers.IntegerField()
+    avg_users_rate = serializers.IntegerField()
+    is_added = serializers.BooleanField()
 
     class Meta:
         model = Movie
-        fields = ['id', 'name', 'last_watchers', 'watchers_count', 'avg_users_rate', 'cover_photo']
+        fields = ['id', 'name', 'watchers_count', 'avg_users_rate', 'is_added', 'last_watchers', 'cover_photo']
 
     def get_last_watchers(self, obj):
-        user = self.context['request'].user
-        user_followings = Follow.objects.filter(user=user).values_list('follow_id', flat=True)
-
-        # Get the last 6 following users who watched any episode of this show
-        last_watchers = UserMovie.objects.filter(
-            user__in=user_followings,
-            movie=obj,
-            watched=True       
-            ).select_related('user')\
-            .order_by('-watched_date')[:6]
-
+        last_watchers = self.context.get('last_watchers', {})
         return LastWatchedUserSerializer(last_watchers, many=True).data
-
-    def get_watchers_count(self, obj):
-        count = UserMovie.objects.filter(
-            movie=obj,
-            watched=True
-        ).values('user').distinct().count()
-
-        return count
-
-    def get_avg_users_rate(self, obj):
-        avg_rate = UserMovie.objects.filter(
-            movie=obj,
-            watched=True,
-            user_rate__isnull=False
-        ).select_related('movie').prefetch_related('user_rate').aggregate(Avg('user_rate', default=0))
-        return int(avg_rate['user_rate__avg'] * 20)
 
 
 class SimpleUserSerializer(serializers.ModelSerializer):
@@ -269,17 +247,11 @@ class SeasonSerializer(serializers.Serializer):
 
 
 class SimilarShowSerializer(serializers.ModelSerializer):
-    is_added = serializers.SerializerMethodField()
+    is_added = serializers.BooleanField()
 
     class Meta:
         model = Show
         fields = ['id', 'name', 'is_added', 'cover_photo']
-    
-    def get_is_added(self, obj):
-        user = self.context.get('user')
-        if user:
-            return UserShow.objects.filter(user=user, show=obj).exists()
-        return None
 
 
 class ShowSerializer(serializers.ModelSerializer):
@@ -289,8 +261,8 @@ class ShowSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Show
-        fields = ['name', 'season_count', 'imdb_rate', 'users_rate', 'release_year',
-                  'duration', 'release_time', 'release_day', 'users_added_count',
+        fields = ['name', 'description', 'season_count', 'imdb_rate', 'users_rate', 'release_year',
+                  'end_year', 'duration', 'release_time', 'release_day', 'users_added_count',
                   'users_rate_count', 'genres', 'cover_photo', 'seasons_rate',
                   'similar_shows']
 
@@ -310,7 +282,10 @@ class ShowSerializer(serializers.ModelSerializer):
         return season_data
     
     def get_similar_shows(self, obj):
-        similar_shows = obj.get_similar_shows()
+        user = self.context.get('request').user
+        similar_shows = obj.get_similar_shows().annotate(
+            is_added=Exists(UserShow.objects.filter(user=user, show=OuterRef('pk')))
+        )
         return SimilarShowSerializer(similar_shows, many=True).data
 class SimpleShowNameSerializer(serializers.ModelSerializer):
     class Meta:
@@ -418,23 +393,18 @@ class SingleEpisodeSerializer(serializers.ModelSerializer):
 
 class ShowWithLastWatchersSerializer(serializers.ModelSerializer):
     last_watchers = serializers.SerializerMethodField()
-    watching_or_finished_count = serializers.SerializerMethodField()
-    average_users_rate = serializers.SerializerMethodField()
+    watching_or_finished_count = serializers.IntegerField()
+    average_users_rate = serializers.IntegerField()
     season_counts = serializers.IntegerField()
+    is_added = serializers.BooleanField()
 
     class Meta:
         model = Show
-        fields = ['id', 'name', 'network', 'last_watchers', 'watching_or_finished_count', 'average_users_rate', 'season_counts', 'cover_photo']
+        fields = ['id', 'name', 'network', 'watching_or_finished_count', 'average_users_rate', 'season_counts', 'is_added', 'last_watchers', 'cover_photo']
 
     def get_last_watchers(self, obj):
-        last_watchers = self.context['last_watchers'].get(obj.id, [])
+        last_watchers = self.context.get('last_watchers', {})
         return LastWatchedUserSerializer(last_watchers, many=True).data
-
-    def get_watching_or_finished_count(self, obj):
-        return obj.watching_or_finished_count
-    
-    def get_average_users_rate(self, obj):
-        return obj.average_users_rate
 
 
 class SearchShowSerializer(serializers.ModelSerializer):
@@ -475,6 +445,16 @@ class SearchUserSerializer(serializers.ModelSerializer):
         model = get_user_model()
         fields = ['username', 'first_name', 'last_name', 'profile_photo']
 
+# Profile section
+class ProfileMovieSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Movie
+        fields = ['id', 'name', 'cover_photo']
+
+class ProfileShowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Show
+        fields = ['id', 'name', 'cover_photo']
 
 # Watchers Section
 class WacherUserSerialzier(serializers.ModelSerializer):

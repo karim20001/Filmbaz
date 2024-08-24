@@ -10,12 +10,12 @@ from django.utils import timezone
 from urllib.parse import urlparse
 from collections import defaultdict
 from operator import attrgetter
-from django.db.models import Count, Q, OuterRef, Subquery, Max, Sum, F, ExpressionWrapper, IntegerField, Prefetch, Avg
+from django.db.models import Count, Q, OuterRef, Subquery, Max, Sum, F, ExpressionWrapper, IntegerField, Prefetch, Avg, Exists
 from django.db.models.functions import Coalesce
 import datetime
 from django.contrib.auth import get_user_model
 from .models import Actor, UserMovie, Movie, Cast, Comment, UserEpisode, Episode, Show, UserShow, Genre, Follow
-from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerializer, MovieWatchListSerializer, MovieWatchersSerializers, MovieWithLastWatchersSerializer,
+from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerializer, LastWatchedUserSerializer, MovieWatchListSerializer, MovieWatchersSerializers, MovieWithLastWatchersSerializer, ProfileMovieSerializer, ProfileShowSerializer,
                           SingleMovieSerializer,
                           UserMovieSerialzier,
                           CommentSerializer,
@@ -70,9 +70,11 @@ class MovieWatchListView(viewsets.ReadOnlyModelViewSet):
 class SingleMovieView(viewsets.ReadOnlyModelViewSet,
                       viewsets.GenericViewSet):
     
-    queryset = Movie.objects.all()
     permission_classes = [IsAuthenticated]
     pagination_class = CustomPagination
+
+    def get_queryset(self):
+        return None
 
     def get_serializer_context(self):
         return {'request': self.request}
@@ -86,6 +88,11 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
         referer = request.META.get('HTTP_REFERER')
         return referer if referer else '/'
     
+    def retrieve(self, request, pk=None):
+        movie = get_object_or_404(Movie, pk=pk)
+        serializer = self.get_serializer(movie)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'])
     def add(self, request, *args, **kwargs):
         movie = self.get_object()
@@ -403,8 +410,7 @@ class ShowWatchListView(viewsets.GenericViewSet):
         return Response(serializer.data)
 
 
-class SingleShowView(mixins.DestroyModelMixin,
-                     viewsets.GenericViewSet):
+class SingleShowView(viewsets.GenericViewSet):
     
     pagination_class = CustomPagination
 
@@ -419,6 +425,9 @@ class SingleShowView(mixins.DestroyModelMixin,
             return ShowSerializer
         else:
             return UserShowSerializer
+    
+    def get_serializer_context(self):
+        return {'request': self.request}
     
     def get_permissions(self):
         if self.action == 'partial_update':
@@ -448,8 +457,8 @@ class SingleShowView(mixins.DestroyModelMixin,
     
     def retrieve(self, request, pk):
         show = get_object_or_404(Show, id=pk)
-        serializer = self.get_serializer_class()
-        return Response(serializer(show).data)
+        serializer = self.get_serializer(show)
+        return Response(serializer.data)
 
     def partial_update(self, request, pk):
         show = get_object_or_404(Show, pk=pk)
@@ -639,7 +648,18 @@ class DiscoverView(viewsets.GenericViewSet):
                     Avg('episodes__user_episodes__user_rate') * 20, output_field=IntegerField()
                 ), 0
             ),
-            season_counts=Count('episodes__season', distinct=True)
+            season_counts=Count('episodes__season', distinct=True),
+            is_added=Exists(UserShow.objects.filter(user=user, show=OuterRef('pk')))
+        )
+
+        annotated_movies = Movie.objects.annotate(
+            watchers_count=Count('user_movies', filter=Q(user_movies__watched=True)),
+            avg_users_rate=Coalesce(
+                ExpressionWrapper(
+                    Avg('user_movies__user_rate') * 20, output_field=IntegerField()
+                ), 0
+            ),
+            is_added=Exists(UserMovie.objects.filter(user=user, movie=OuterRef('pk')))
         )
 
         # 1. Top Shows: Shows with the most common genres that the user is watching
@@ -655,19 +675,57 @@ class DiscoverView(viewsets.GenericViewSet):
         ).order_by('-users_added_count')[:10]
 
         # 3. Trending Movies: Movies added by users in the last 3 months
-        trending_movies = Movie.objects.filter(
+        trending_movies = annotated_movies.filter(
             user_movies__added_date__gte=three_months_ago
         ).order_by('-users_added_count')[:10]
 
         # 4. Last watched shows by friends
         last_watched_shows_data = UserEpisode.objects.filter(
             user__in=user_followings
-        ).select_related('episode').values('episode__show_id').annotate(last_watch_date=Max('watch_date')).order_by('-last_watch_date')[:10]
+        ).values('episode__show_id').annotate(last_watch_date=Max('watch_date')).order_by('-last_watch_date')[:10]
 
         show_ids = [item['episode__show_id'] for item in last_watched_shows_data]
+
+         # Subquery to get the last UserEpisode for each user and show
+        last_user_episode_subquery = UserEpisode.objects.filter(
+            user=OuterRef('user'),
+            episode__show=OuterRef('episode__show')
+        ).order_by('-watch_date').values('pk')[:1]
+
+        # Filter the UserEpisodes to be unique per user per show
+        user_episode_prefetch = Prefetch(
+            'user_episodes',
+            queryset=UserEpisode.objects.filter(
+                user__in=user_followings,
+                pk__in=Subquery(last_user_episode_subquery)
+            ).select_related('user', 'episode').order_by('-watch_date'),
+            to_attr='prefetched_user_episodes'
+        )
+
+        # Fetch the shows with the prefetch applied
         shows = annotated_shows.filter(id__in=show_ids).prefetch_related(
-            'genres',
-            Prefetch('user_shows', queryset=UserShow.objects.filter(user__in=user_followings))
+            Prefetch(
+                'episodes',
+                queryset=Episode.objects.all().prefetch_related(user_episode_prefetch),
+                to_attr='prefetched_episodes'
+            )
+        )
+
+        # Process the prefetched data
+        community_activity_data = []
+        for show in shows:
+            last_watchers = []
+            for episode in getattr(show, 'prefetched_episodes', []):
+                for user_episode in getattr(episode, 'prefetched_user_episodes', [])[:6]:
+                    last_watchers.append(user_episode)
+            
+            community_activity_data.append(
+            ShowWithLastWatchersSerializer(
+                show,
+                context={
+                    'last_watchers': LastWatchedUserSerializer(last_watchers, many=True).data
+                }
+            ).data
         )
 
         # 5. Last watched movies by friends
@@ -677,31 +735,28 @@ class DiscoverView(viewsets.GenericViewSet):
         ).values('movie_id').annotate(last_watch_date=Max('watched_date')).order_by('-last_watch_date')[:10]
 
         movie_ids = [item['movie_id'] for item in last_watched_movies]
-        movies = Movie.objects.filter(id__in=movie_ids).prefetch_related(
-            'genres',
-            Prefetch('user_movies', queryset=UserMovie.objects.filter(user__in=user_followings))
+        # Annotate and Prefetch related data with custom attribute `prefetched_user_movies`
+        movies = annotated_movies.filter(id__in=movie_ids).prefetch_related(
+            Prefetch(
+                'user_movies',
+                queryset=UserMovie.objects.filter(user__in=user_followings, watched=True).select_related('user').order_by('-watched_date'),
+                to_attr='prefetched_user_movies'
+            )
         )
         # Serialize the data
-        context = {
-            'request': request,
-            'user_followings': user_followings,
-            'last_watchers': {
-                show: list(
-                    UserEpisode.objects.filter(
-                        user__in=user_followings,
-                        episode__show=show
-                    ).select_related('user')\
-                        .order_by('-watch_date')[:6]
-                )
-                for show in show_ids
-            }
-        }
-        
-        top_shows_data = SimilarShowSerializer(top_shows, many=True, context=context).data
-        trending_shows_data = SimilarShowSerializer(trending_shows, many=True, context=context).data
-        trending_movies_data = SimilarMovieSerializer(trending_movies, many=True, context=context).data
-        community_activity_data = ShowWithLastWatchersSerializer(shows, many=True, context=context).data
-        community_activity_movies_data = MovieWithLastWatchersSerializer(movies, many=True, context=context).data
+        top_shows_data = SimilarShowSerializer(top_shows, many=True).data
+        trending_shows_data = SimilarShowSerializer(trending_shows, many=True).data
+        trending_movies_data = SimilarMovieSerializer(trending_movies, many=True).data
+
+        community_activity_movies_data = [
+            MovieWithLastWatchersSerializer(
+                movie,
+                context = {
+                    'last_watchers': LastWatchedUserSerializer(getattr(movie, 'prefetched_user_movies'), many=True).data
+                }
+            ).data
+            for movie in movies
+        ]
 
         # Combine into a single response
         combined_response = {
@@ -713,7 +768,6 @@ class DiscoverView(viewsets.GenericViewSet):
         }
 
         return Response(combined_response)
-
 
 
 class SearchView(viewsets.GenericViewSet):
@@ -896,10 +950,10 @@ class ProfileView(viewsets.GenericViewSet):
         queryset = self.get_queryset()
 
         serializer_user = SimpleUserSerializer(queryset.get('user')).data
-        serializer_movie = SimilarMovieSerializer(queryset.get('movies'), many=True, context={'user': queryset.get('user')}).data
-        serializer_favorite_movie = SimilarMovieSerializer(queryset.get('favorite_movies'), many=True, context={'user': queryset.get('user')}).data
-        serializer_show = SimilarShowSerializer(queryset.get('shows'), many=True, context={'user': queryset.get('user')}).data
-        serializer_favorite_show = SimilarShowSerializer(queryset.get('favorite_shows'), many=True, context={'user': queryset.get('user')}).data
+        serializer_movie = ProfileMovieSerializer(queryset.get('movies'), many=True).data
+        serializer_favorite_movie = ProfileMovieSerializer(queryset.get('favorite_movies'), many=True).data
+        serializer_show = ProfileShowSerializer(queryset.get('shows'), many=True).data
+        serializer_favorite_show = ProfileShowSerializer(queryset.get('favorite_shows'), many=True).data
         movie_time_spent = queryset.get('movie_time_spent')
         show_time_spent = queryset.get('show_time_spent')
 
@@ -908,13 +962,13 @@ class ProfileView(viewsets.GenericViewSet):
             'movies': serializer_movie,
             'favorite_movies': serializer_favorite_movie,
             'movie_stats': {
-                'time_spent': f"{movie_time_spent['months']} months, {movie_time_spent['days']} days, {movie_time_spent['hours']} hours, {movie_time_spent['minutes']} minutes",
+                'time_spent': movie_time_spent,
                 'total_movies_watched': queryset.get('movie_count'),
             },
             'shows': serializer_show,
             'favorite_shows': serializer_favorite_show,
             'show_stats': {
-                'time_spent': f"{show_time_spent['months']} months, {show_time_spent['days']} days, {show_time_spent['hours']} hours, {show_time_spent['minutes']} minutes",
+                'time_spent': show_time_spent,
                 'total_episodes_watched': queryset.get('episode_count'),
             },
             'follower_count': queryset.get('follower_count'),
@@ -986,8 +1040,8 @@ class ProfileView(viewsets.GenericViewSet):
         unwatched_movies = Movie.objects.filter(user_movies__user=user, user_movies__watched=False)\
             .order_by('user_movies__added_date')
 
-        serialized_watched = SimilarMovieSerializer(watched_movies, many=True, context={'user': user}).data
-        serialized_unwatched = SimilarMovieSerializer(unwatched_movies, many=True, context={'user': user}).data
+        serialized_watched = ProfileMovieSerializer(watched_movies, many=True).data
+        serialized_unwatched = ProfileMovieSerializer(unwatched_movies, many=True).data
 
         data = {
             'watched_movies': serialized_watched,
@@ -1072,7 +1126,7 @@ class ProfileView(viewsets.GenericViewSet):
         """ Serialize the annotated queryset data into a dictionary with relevant fields. """
         return [
             {
-                'show': SimilarShowSerializer(show, context={'user': None}).data,
+                'show': ProfileShowSerializer(show).data,
                 'watched_percentage': show.watched_percentage if show.total_episodes > 0 else 0,
                 # 'last_watched_episode_date': show.last_watched_episode_date,
                 # 'total_episodes': show.total_episodes,
