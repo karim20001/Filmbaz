@@ -115,11 +115,14 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
         data = request.data
         watched_status = data.pop('watched', None)
 
-        if watched_status == True and not user_movie:
+        if watched_status and watched_status == True and not user_movie:
             UserMovie.objects.create(user=user, movie=movie, watched=True, watched_date=datetime.datetime.now())
             movie.users_added_count += 1
             movie.save()
             return Response({'detail': 'movie add and watched'}, status.HTTP_201_CREATED)
+        
+        elif not user_movie:
+            return Response({'detail': 'movie not watched yet'}, status.HTTP_400_BAD_REQUEST)
 
         if watched_status is not None:
             if not watched_status and user_movie.watched:
@@ -146,13 +149,12 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
         new_favorite_cast_id = data.get('favorite_cast')
         content_type = ContentType.objects.get(model='movie').id
 
-        if Cast.objects.filter(id=new_favorite_cast_id, object_id=old_favorite_cast.id, content_type=content_type):
+        if Cast.objects.filter(id=new_favorite_cast_id, object_id=movie.id, content_type=content_type):
 
             if new_favorite_cast_id and (not old_favorite_cast or new_favorite_cast_id != old_favorite_cast.id):
                 new_favorite_cast = get_object_or_404(Cast, id=new_favorite_cast_id)
-                # self.update_likes_for_favorite_cast(old_favorite_cast, new_favorite_cast)
-
                 user_movie.favorite_cast = new_favorite_cast
+
         else:
             return Response({"detail": "cast is not related"}, status.HTTP_400_BAD_REQUEST)
 
