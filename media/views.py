@@ -83,9 +83,9 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
             return UserMovieSerialzier
         return SingleMovieSerializer
     
-    def get_redirect_url(self, request):
-        referer = request.META.get('HTTP_REFERER')
-        return referer if referer else '/'
+    # def get_redirect_url(self, request):
+    #     referer = request.META.get('HTTP_REFERER')
+    #     return referer if referer else '/'
     
     def retrieve(self, request, pk=None):
         movie = get_object_or_404(Movie, pk=pk)
@@ -104,24 +104,27 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
         movie.save()
         return Response(status=status.HTTP_201_CREATED)
 
-    def partial_update(self, request, *args, **kwargs):
-        movie = self.get_object()
-        if movie.release_date > datetime.date.today():
+    def partial_update(self, request, pk):
+        movie = get_object_or_404(Movie, pk=pk)
+        if not movie.is_released:
             return Response({"message": "movie not released"}, status.HTTP_400_BAD_REQUEST)
         
         user = request.user
-        user_movie = get_object_or_404(UserMovie, user=user, movie=movie)
+        user_movie = UserMovie.objects.filter(user=user, movie=movie).first()
 
         data = request.data
         watched_status = data.pop('watched', None)
 
+        if watched_status == True and not user_movie:
+            UserMovie.objects.create(user=user, movie=movie, watched=True, watched_date=datetime.datetime.now())
+            movie.users_added_count += 1
+            movie.save()
+            return Response({'detail': 'movie add and watched'}, status.HTTP_201_CREATED)
+
         if watched_status is not None:
             if not watched_status and user_movie.watched:
-                # Update likes for favorite_cast and users_rate for movie
-                # self.update_likes_and_rate(movie, user_movie, decrement=True)
-                
                 # Reset all other fields to None if watched status is changed to False
-                user_movie.is_favorite = None
+                user_movie.is_favorite = False
                 user_movie.user_rate = None
                 user_movie.emoji = None
                 user_movie.favorite_cast = None
@@ -152,33 +155,20 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
                 user_movie.favorite_cast = new_favorite_cast
         else:
             return Response({"detail": "cast is not related"}, status.HTTP_400_BAD_REQUEST)
-        
-        # old_user_rate = user_movie.user_rate
-        # new_user_rate = data.get('user_rate')
-
-        # if new_user_rate is not None and new_user_rate != old_user_rate:
-        #     user_movie.user_rate = new_user_rate
-        #     self.update_users_rate(movie, old_user_rate, new_user_rate)
 
         serializer = self.get_serializer(user_movie, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return redirect(self.get_redirect_url(request))
+        return Response({'detail': 'update success'}, status.HTTP_200_OK)
 
-    def destroy(self, request, *args, **kwargs):
-        movie = self.get_object()
+    def destroy(self, request, pk):
+        movie = get_object_or_404(Movie, pk=pk)
         user = request.user
-
-        try:
-            user_movie = UserMovie.objects.get(user=user, movie=movie)
-            # if user_movie.watched:
-            #     self.update_likes_and_rate(movie, user_movie, decrement=True)
-            user_movie.delete()
-            movie.users_added_count -= 1
-            movie.save()
-            return redirect(self.get_redirect_url(request))
-        except UserMovie.DoesNotExist:
-            return Response({'message': 'Movie not added yet!'}, status=status.HTTP_400_BAD_REQUEST)
+        user_movie = get_object_or_404(UserMovie, user=user, movie=movie)
+        movie.users_added_count -= 1
+        movie.save()
+        user_movie.delete()
+        return Response({'detail': 'user movie deleted'}, status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'])
     def watchers(self, request, pk):
