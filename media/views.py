@@ -74,7 +74,7 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
     pagination_class = CustomPagination
 
     def get_queryset(self):
-        return None
+        return Movie.objects.all()
 
     def get_serializer_context(self):
         return {'request': self.request}
