@@ -15,7 +15,7 @@ from django.db.models.functions import Coalesce
 import datetime
 from django.contrib.auth import get_user_model
 from .models import Actor, UserMovie, Movie, Cast, Comment, UserEpisode, Episode, Show, UserShow, Genre, Follow
-from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerializer, LastWatchedUserSerializer, MovieWatchListSerializer, MovieWatchersSerializers, MovieWithLastWatchersSerializer, ProfileMovieSerializer, ProfileShowSerializer,
+from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerializer, FollowerSerializer, FollowingSerializer, LastWatchedUserSerializer, MovieWatchListSerializer, MovieWatchersSerializers, MovieWithLastWatchersSerializer, ProfileMovieSerializer, ProfileShowSerializer,
                           SingleMovieSerializer,
                           UserMovieSerialzier,
                           CommentSerializer,
@@ -32,7 +32,6 @@ from .serializers import (ActorMovieSerializer, ActorSerializer, ActorShowSerial
                           SearchShowSerializer,
                           SearchUserSerializer,
                           WatchersSerializers,
-                          FollowSerializer,
                           )
 from core.serializers import SimpleUserSerializer, UserGetSerializer, UserUpdateSerializer
 from .permissions import AuthenticateOwner, WatchedEpisodeByUser, WatchedShowByUser
@@ -1142,7 +1141,7 @@ class ProfileView(viewsets.GenericViewSet):
         queryset = Follow.objects.filter(follow=user).order_by('-follow_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
-        serialize_followers = FollowSerializer(users_page, many=True, context={'status': 'follower'})
+        serialize_followers = FollowerSerializer(users_page, many=True, context={'request': request})
         
         return paginator.get_paginated_response(serialize_followers.data)
 
@@ -1153,7 +1152,7 @@ class ProfileView(viewsets.GenericViewSet):
         queryset = Follow.objects.filter(follow=user).order_by('-follow_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
-        serialize_followers = FollowSerializer(users_page, many=True, context={'status': 'follower'})
+        serialize_followers = FollowerSerializer(users_page, many=True, context={'request': request})
         
         return paginator.get_paginated_response(serialize_followers.data)
 ######################################################
@@ -1164,7 +1163,7 @@ class ProfileView(viewsets.GenericViewSet):
         queryset = Follow.objects.filter(user=user).order_by('-follow_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
-        serialize_followers = FollowSerializer(users_page, many=True, context={'status': 'follower'})
+        serialize_followers = FollowingSerializer(users_page, many=True, context={'request': request})
         
         return paginator.get_paginated_response(serialize_followers.data)
 
@@ -1175,7 +1174,7 @@ class ProfileView(viewsets.GenericViewSet):
         queryset = Follow.objects.filter(user=user).order_by('-follow_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
-        serialize_followers = FollowSerializer(users_page, many=True, context={'status': 'follower'})
+        serialize_followers = FollowingSerializer(users_page, many=True, context={'request': request})
         
         return paginator.get_paginated_response(serialize_followers.data)
 ##############################################

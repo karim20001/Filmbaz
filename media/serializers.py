@@ -511,7 +511,25 @@ class MovieWatchersSerializers(serializers.ModelSerializer):
 
 ###################################################################
 # Follow Serializer
-class FollowSerializer(serializers.ModelSerializer):
+class FollowingSerializer(serializers.ModelSerializer):
+    follow = WacherUserSerialzier()
+    is_follow = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Follow
+        fields = ['follow', 'is_follow', 'is_following']
+    
+    def get_is_follow(self, obj):
+        user = self.context['request'].user
+        return Follow.objects.filter(user=obj.follow, follow=user).exists()
+        
+    def get_is_following(self, obj):
+        user = self.context['request'].user
+        return Follow.objects.filter(user=user, follow=obj.follow).exists()
+
+
+class FollowerSerializer(serializers.ModelSerializer):
     user = WacherUserSerialzier()
     is_follow = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
@@ -521,18 +539,12 @@ class FollowSerializer(serializers.ModelSerializer):
         fields = ['user', 'is_follow', 'is_following']
     
     def get_is_follow(self, obj):
-        status = self.context.get('status')
-        if status == 'follower':
-            return Follow.objects.filter(user=obj.follow, follow=obj.user).exists()
-        elif status == 'following':
-            return Follow.objects.filter(user=obj.user, follow=obj.follow).exists()
-
+        user = self.context['request'].user
+        return Follow.objects.filter(user=obj.follow, follow=user).exists()
+        
     def get_is_following(self, obj):
-        status = self.context.get('status')
-        if status == 'follower':
-            return Follow.objects.filter(user=obj.user, follow=obj.follow).exists()
-        elif status == 'following':
-            return Follow.objects.filter(user=obj.follow, follow=obj.user).exists()
+        user = self.context['request'].user
+        return Follow.objects.filter(user=user, follow=obj.follow).exists()
         
 #################################################
 # Actor Section
