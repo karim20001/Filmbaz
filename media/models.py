@@ -122,10 +122,12 @@ class Cast(models.Model):
 
 
 class UserShow(models.Model):
+    NOT_STARTED = None
     WATCHING = 'در حال تماشا'
     STOPPED = 'متوقف شده'
     WATCH_LATER = 'برای بعد'
     STATUS_CHOICES = [
+        (NOT_STARTED, None),
         (WATCHING, 'در حال تماشا'),
         (STOPPED, 'متوقف شده'),
         (WATCH_LATER, 'برای بعد'),
