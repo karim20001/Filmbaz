@@ -1,6 +1,15 @@
 import scrapy
+from datetime import datetime
 from asgiref.sync import sync_to_async
 from scrapy_djangoitem import DjangoItem
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+from scrapy.selector import Selector
 from media.models import Actor
 
 
@@ -10,36 +19,62 @@ class ActorItem(DjangoItem):
 
 class ActorSpider(scrapy.Spider):
     name = 'actor_spider'
-    start_urls = ['https://www.imdb.com/search/name/?gender=male,female']
+    allowed_domains = ['imdb.com']
 
-    def parse(self, response):
-        actors = response.css('a.ipc-title-link-wrapper::attr(href)').getall()
-        print(actors)
+    def __init__(self, *args, **kwargs):
+        super(ActorSpider, self).__init__(*args, **kwargs)
+        # chrome_options = Options()
+        # chrome_options.add_argument("--headless")
+        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))  # Specify the path to chromedriver
+
+    def start_requests(self):
+        start_url = 'https://www.imdb.com/search/name/?gender=male,female'
+        # Return an iterable of a single Scrapy Request object that calls parse_page
+        yield scrapy.Request(url=start_url, callback=self.parse_page_with_selenium)
+
+    def parse_page_with_selenium(self, response):
+        # Use Selenium to load the page content
+        self.driver.get(response.url)
+
+        try:
+            WebDriverWait(self.driver, 30).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "button.ipc-btn.ipc-btn--single-padding.ipc-btn--center-align-content.ipc-btn--default-height.ipc-btn--core-base.ipc-btn--theme-base.ipc-btn--on-accent2.ipc-btn--rounded.ipc-text-button.ipc-see-more__button"))
+            )
+
+            # Parse the page with Scrapy's Selector
+            selenium_response = Selector(text=self.driver.page_source)
+            actors = selenium_response.css('a.ipc-title-link-wrapper::attr(href)').getall()[:2]
+            print(actors)
+
+            for actor in actors:
+                bio_link = 'https://www.imdb.com' + actor.split('?')[0] + 'bio/?ref_=nm_ov_bio_sm'
+                print(bio_link)
+                # Yield a request for each actor's bio page
+                yield scrapy.Request(url=bio_link, callback=self.parse_actor)
+
         
-        # Loop through the list of actors on the page
-        # for actor in actors:
-        #     # actor_name = actor.css('.lister-item-header a::text').get()
-        #     # actor_url = actor.css('.ipc-title__text h3::attr(href)').get()
-        #     print(actor)
+            # more_button = self.driver.find_element(By.CSS_SELECTOR, "button.ipc-btn.ipc-btn--single-padding.ipc-btn--center-align-content.ipc-btn--default-height.ipc-btn--core-base.ipc-btn--theme-base.ipc-btn--on-accent2.ipc-btn--rounded.ipc-text-button.ipc-see-more__button")
+            # if more_button:
+            #     more_button.click()
+            #     WebDriverWait(self.driver, 10).until(
+            #         EC.presence_of_element_located((By.CSS_SELECTOR, ".lister-item"))
+            #     )
+            #     # Parse the newly loaded content
+            #     self.parse_page()
 
-        #     # Go to the actor's details page
-        #     yield response.follow(actor, self.parse_actor)
-
-        # Follow the pagination to get the next page of actors
-         # Check if there is a "50 more" button and follow it
-        more_button = response.css('span.ipc-btn__text:contains("50 more")')
-        if more_button:
-            next_page = more_button.xpath('./ancestor::a/@href').get()
-            if next_page:
-                yield response.follow(next_page, self.parse)
-
+        except Exception as e:
+            self.logger.error(f'Error occurred: {str(e)}')
+        finally:
+            self.driver.quit()
     def parse_actor(self, response):
         # Extract actor details
-        name = response.css('span.itemprop::text').get()
-        bio = ' '.join(response.css('div.soda p::text').getall()).strip()
-        birth_date = response.css('time::attr(datetime)').get()
-        birth_city = response.css('div.birthplace a::text').get()
-        profile_photo_url = response.css('.poster img::attr(src)').get()
+        name = response.css('h2.sc-5f0a904b-9::text').get()
+        bio = ' '.join(response.css('div.ipc-html-content-inner-div::text').getall()).strip()
+        birth_info_div = response.css('div.ipc-html-content-inner-div')
+        birth_date = birth_info_div.css('a::text').getall()[0] + birth_info_div.css('a::text').getall()[1]
+        birth_date = datetime.strptime(birth_date, '%B %d, %Y').date()
+        birth_city = birth_info_div.css('a::text').getall()[2]
+        profile_photo_url = response.css('img.ipc-image::attr(src)').get()
         print(f'\n\n {name}\n {bio} \n {birth_date} \n {birth_city}')
 
         # Save actor data to Django model
@@ -54,6 +89,7 @@ class ActorSpider(scrapy.Spider):
             actor_item['profile_photo'] = profile_photo_url  # Implement downloading and saving images
 
         # Save to Django database
-        actor_item.save()
+        sync_to_async(actor_item.save)()
+        print('success')
 
         yield actor_item

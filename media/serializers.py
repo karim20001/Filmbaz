@@ -508,7 +508,7 @@ class MovieWatchersSerializers(serializers.ModelSerializer):
             return time_difference
         
         # Otherwise, return the added_date
-        return obj.watch_date
+        return obj.watched_date
 
 ###################################################################
 # Follow Serializer

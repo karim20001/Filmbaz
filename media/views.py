@@ -188,6 +188,9 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
             latest_watch_date=Max('watched_date')
         ).order_by('-latest_watch_date')
 
+        if not queryset:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = MovieWatchersSerializers(page, many=True)
@@ -482,6 +485,9 @@ class SingleShowView(viewsets.GenericViewSet):
         ).annotate(
             latest_watch_date=Max('watch_date')
         ).order_by('-latest_watch_date')
+
+        if not queryset:
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
         page = self.paginate_queryset(queryset)
         if page is not None:
