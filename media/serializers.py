@@ -86,6 +86,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
     favorite_cast_stats = serializers.SerializerMethodField()
     emoji_stats = serializers.SerializerMethodField()
     similar_movies = serializers.SerializerMethodField()
+    count_comments = serializers.SerializerMethodField()
 
     class Meta:
         model = Movie
@@ -163,6 +164,11 @@ class SingleMovieSerializer(serializers.ModelSerializer):
     def get_is_watched(self, obj):
         request = self.context['request']
         return UserMovie.objects.filter(user=request.user, movie=obj, watched=True).exists()
+    
+    def get_count_comments(self, obj):
+        request = self.context.get('request')
+        content_model = ContentType.objects.get(model='movie')
+        return Comment.objects.filter(content_type=content_model, user=request.user, object_id=obj.id).count()
     
 
 class MovieWithLastWatchersSerializer(serializers.ModelSerializer):
@@ -257,15 +263,21 @@ class SimilarShowSerializer(serializers.ModelSerializer):
 
 class ShowSerializer(serializers.ModelSerializer):
     genres = GenreSerializer()
+    casts = serializers.SerializerMethodField()
     seasons_rate = serializers.SerializerMethodField()
     similar_shows = serializers.SerializerMethodField()
+    count_comments = serializers.SerializerMethodField()
 
     class Meta:
         model = Show
         fields = ['name', 'description', 'season_count', 'imdb_rate', 'users_rate', 'release_year',
-                  'end_year', 'duration', 'release_time', 'release_day', 'users_added_count',
+                  'end_year', 'duration', 'release_time', 'release_day', 'casts', 'users_added_count',
                   'users_rate_count', 'genres', 'cover_photo', 'seasons_rate',
                   'similar_shows']
+
+    def get_casts(self, obj):
+        casts = Cast.objects.filter(content_type__model='show', object_id=obj.id)  # Filter casts related to the movie
+        return SimpleCastSerializer(casts, many=True).data
 
     def get_seasons_rate(self, obj):
     # Get distinct seasons for the show
@@ -288,6 +300,11 @@ class ShowSerializer(serializers.ModelSerializer):
             is_added=Exists(UserShow.objects.filter(user=user, show=OuterRef('pk')))
         )
         return SimilarShowSerializer(similar_shows, many=True).data
+
+    def get_count_comments(self, obj):
+        request = self.context.get('request')
+        content_model = ContentType.objects.get(model='show')
+        return Comment.objects.filter(content_type=content_model, user=request.user, object_id=obj.id).count()
 class SimpleShowNameSerializer(serializers.ModelSerializer):
     class Meta:
         model = Show
@@ -330,10 +347,13 @@ class SingleEpisodeSerializer(serializers.ModelSerializer):
     users_rate = serializers.SerializerMethodField()
     favorite_cast_stats = serializers.SerializerMethodField()
     emoji_stats = serializers.SerializerMethodField()
+    is_watched = serializers.SerializerMethodField()
+    count_comments = serializers.SerializerMethodField()
+
     class Meta:
         model = Episode
         fields = ['id', 'season', 'episode_number', 'name', 'cover_photo',
-                  'casts', 'users_rate', 'favorite_cast_stats', 'emoji_stats']
+                  'casts', 'is_watched', 'users_rate', 'favorite_cast_stats', 'emoji_stats', 'count_comments']
 
     def get_user_episode(self, obj):
         request = self.context.get('request')
@@ -390,6 +410,15 @@ class SingleEpisodeSerializer(serializers.ModelSerializer):
             except UserEpisode.DoesNotExist:
                 pass
         return None
+    
+    def get_is_watched(self, obj):
+        request = self.context.get('request')
+        return UserEpisode.objects.filter(user=request.user, episode=obj).exists()
+    
+    def get_count_comments(self, obj):
+        request = self.context.get('request')
+        content_model = ContentType.objects.get(model='episode')
+        return Comment.objects.filter(content_type=content_model, user=request.user, object_id=obj.id).count()
 
 
 class ShowWithLastWatchersSerializer(serializers.ModelSerializer):

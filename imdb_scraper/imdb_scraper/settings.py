@@ -97,6 +97,10 @@ DOWNLOADER_MIDDLEWARES = {
     'scrapy_user_agents.middlewares.RandomUserAgentMiddleware': 400,
 }
 
+ITEM_PIPELINES = {
+   'imdb_scraper.pipelines.ActorPipeline': 300,
+}
+
 ROBOTSTXT_OBEY = False
 
 DOWNLOAD_DELAY = 2  # Delay between requests in seconds

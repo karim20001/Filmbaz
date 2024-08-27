@@ -285,7 +285,6 @@ class CommentViewSet(mixins.CreateModelMixin,
         content_type = self.get_content_type()
         data['content_type'] = ContentType.objects.get(model=content_type).id
         data['object_id'] = self.get_content_type_pk(content_type)
-        print(data['object_id'])
         serializer = self.get_serializer(data=data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -498,12 +497,9 @@ class SingleShowView(viewsets.GenericViewSet):
         return Response(serializer.data)
 
 
-class EpisodeView(
-                  mixins.CreateModelMixin,
-                  mixins.RetrieveModelMixin,
+class EpisodeView(mixins.RetrieveModelMixin,
                   viewsets.GenericViewSet):
     
-    serializer_class = Episode
     queryset = Episode.objects.all()
     permission_classes = [IsAuthenticated]
 
@@ -581,7 +577,7 @@ class EpisodeView(
                 self.update_likes_for_favorite_cast(old_favorite_cast, new_favorite_cast)
                 instance.favorite_cast = new_favorite_cast
 
-        else:
+        elif new_favorite_cast_id:
             return Response({"detail": "cast is not related"}, status.HTTP_400_BAD_REQUEST)
         
         old_user_rate = instance.user_rate
@@ -589,13 +585,12 @@ class EpisodeView(
 
         if new_user_rate is not None and new_user_rate != old_user_rate:
             instance.user_rate = new_user_rate
-            self.update_users_rate(instance, old_user_rate, new_user_rate)
 
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        return Response(serializer.data, status.HTTP_200_OK)
+        return Response({"detail": "update success"}, status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_queryset()
@@ -615,15 +610,6 @@ class EpisodeView(
             old_cast.save()
         new_cast.likes += 1
         new_cast.save()
-
-    def update_users_rate(self, episode, old_rate, new_rate):
-        if old_rate is not None:
-            episode.users_rate = ((episode.users_rate * episode.usermovie_set.count()) - old_rate + new_rate) / episode.usermovie_set.count()
-        else:
-            episode.users_rate = ((episode.users_rate * (episode.usermovie_set.count() - 1)) + new_rate) / episode.usermovie_set.count()
-        episode.save()
-
-
 
 #discover Section
 
