@@ -352,7 +352,7 @@ class SingleEpisodeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Episode
-        fields = ['id', 'season', 'episode_number', 'name', 'cover_photo',
+        fields = ['id', 'season', 'episode_number', 'name', 'cover_photo', 'description',
                   'casts', 'is_watched', 'users_rate', 'favorite_cast_stats', 'emoji_stats', 'count_comments']
 
     def get_user_episode(self, obj):

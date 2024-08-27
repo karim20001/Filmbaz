@@ -456,10 +456,13 @@ class SingleShowView(viewsets.GenericViewSet):
     def partial_update(self, request, pk):
         show = get_object_or_404(Show, pk=pk)
         user_show = get_object_or_404(UserShow, user=request.user, show=show)
+        if not user_show.status and request.data['status']:
+            return Response({"detail": "can't update status while not start show"}, status.HTTP_400_BAD_REQUEST)
 
         serializer = UserShowSerializer(user_show, request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response({"detail": "update success"}, status.HTTP_200_OK)
     
     def destroy(self, request, pk):
         show = get_object_or_404(Show, pk=pk)
