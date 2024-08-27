@@ -93,7 +93,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
         depth = 1
         fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description', 'is_released',
                   'release_date', 'genres', 'casts', 'is_watched', 'users_rate_count', 'cover_photo',
-                  'users_added_count', 'users_rate_counts', 'favorite_cast_stats',
+                  'users_added_count', 'count_comments', 'users_rate_counts', 'favorite_cast_stats',
                   'user_movie', 'emoji_stats', 'similar_movies']
     
     # depth = 1
@@ -272,7 +272,7 @@ class ShowSerializer(serializers.ModelSerializer):
         model = Show
         fields = ['name', 'description', 'season_count', 'imdb_rate', 'users_rate', 'release_year',
                   'end_year', 'duration', 'release_time', 'release_day', 'casts', 'users_added_count',
-                  'users_rate_count', 'genres', 'cover_photo', 'seasons_rate',
+                  'users_rate_count', 'count_comments', 'genres', 'cover_photo', 'seasons_rate',
                   'similar_shows']
 
     def get_casts(self, obj):
