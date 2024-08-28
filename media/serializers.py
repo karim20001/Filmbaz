@@ -80,6 +80,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
     # add_favorite = serializers.SerializerMethodField()
     casts = serializers.SerializerMethodField()
     is_watched = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
     # remove_link = serializers.SerializerMethodField()
     user_movie = serializers.SerializerMethodField()
     users_rate_counts = serializers.SerializerMethodField()
@@ -92,7 +93,7 @@ class SingleMovieSerializer(serializers.ModelSerializer):
         model = Movie
         depth = 1
         fields = ['name', 'duration', 'imdb_rate', 'users_rate', 'description', 'is_released',
-                  'release_date', 'genres', 'casts', 'is_watched', 'users_rate_count', 'cover_photo',
+                  'release_date', 'genres', 'casts', 'is_watched', 'is_favorite', 'users_rate_count', 'cover_photo',
                   'users_added_count', 'count_comments', 'users_rate_counts', 'favorite_cast_stats',
                   'user_movie', 'emoji_stats', 'similar_movies']
     
@@ -170,6 +171,10 @@ class SingleMovieSerializer(serializers.ModelSerializer):
         content_model = ContentType.objects.get(model='movie')
         return Comment.objects.filter(content_type=content_model, user=request.user, object_id=obj.id).count()
     
+    def get_is_favorite(self, obj):
+        request = self.context.get('request')
+        return UserMovie.objects.filter(user=request.user, movie=obj, is_favorite=True).exists()
+    
 
 class MovieWithLastWatchersSerializer(serializers.ModelSerializer):
     last_watchers = serializers.SerializerMethodField()
@@ -189,8 +194,8 @@ class MovieWithLastWatchersSerializer(serializers.ModelSerializer):
 class SimpleUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
-        fields = ['user_name', 'first_name', 'profile_photo']
-        read_only_fields = ['user_name', 'first_name', 'profile_photo']
+        fields = ['username', 'first_name', 'profile_photo']
+        read_only_fields = ['username', 'first_name', 'profile_photo']
 
 class ReplySerializer(serializers.ModelSerializer):
     user = SimpleUserSerializer(read_only=True)
@@ -267,13 +272,14 @@ class ShowSerializer(serializers.ModelSerializer):
     seasons_rate = serializers.SerializerMethodField()
     similar_shows = serializers.SerializerMethodField()
     count_comments = serializers.SerializerMethodField()
+    is_favorite = serializers.SerializerMethodField()
 
     class Meta:
         model = Show
         fields = ['name', 'description', 'season_count', 'imdb_rate', 'users_rate', 'release_year',
                   'end_year', 'duration', 'release_time', 'release_day', 'casts', 'users_added_count',
                   'users_rate_count', 'count_comments', 'genres', 'cover_photo', 'seasons_rate',
-                  'similar_shows']
+                  'similar_shows', 'is_favorite']
 
     def get_casts(self, obj):
         casts = Cast.objects.filter(content_type__model='show', object_id=obj.id)  # Filter casts related to the movie
@@ -305,6 +311,12 @@ class ShowSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         content_model = ContentType.objects.get(model='show')
         return Comment.objects.filter(content_type=content_model, user=request.user, object_id=obj.id).count()
+    
+    def get_is_favorite(self, obj):
+        request = self.context.get('request')
+        return UserShow.objects.filter(user=request.user, show=obj, is_favorite=True).exists()
+
+
 class SimpleShowNameSerializer(serializers.ModelSerializer):
     class Meta:
         model = Show

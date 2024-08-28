@@ -457,7 +457,7 @@ class SingleShowView(viewsets.GenericViewSet):
         show = get_object_or_404(Show, pk=pk)
         user_show = get_object_or_404(UserShow, user=request.user, show=show)
         if not user_show.status and request.data['status']:
-            return Response({"detail": "can't update status while not start show"}, status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "can't update while not start show"}, status.HTTP_400_BAD_REQUEST)
 
         serializer = UserShowSerializer(user_show, request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -985,7 +985,7 @@ class ProfileView(viewsets.GenericViewSet):
         serializer = UserGetSerializer(user).data
         return Response(serializer)
     
-    @action(detail=False, methods=['patch'], url_path='detail')
+    @action(detail=False, methods=['patch'], url_path='detail/edit')
     def update_profile(self, request):
         user = request.user
         data = request.data
@@ -1184,9 +1184,53 @@ class ProfileView(viewsets.GenericViewSet):
         user = request.user
         user_model = get_user_model()
         followed_user = get_object_or_404(user_model, username=pk)
-        instance = get_object_or_404(user=user, follow=followed_user)
+        instance = get_object_or_404(Follow, user=user, follow=followed_user)
         instance.delete()
         return Response({"detail": "deleted"}, status.HTTP_204_NO_CONTENT)
+################################################
+# Favorite section
+    @action(detail=False, methods=['get'], url_path='movie-favorites')
+    def movie_favorites(self, request):
+        queryset = Movie.objects.filter(user_movies__user=request.user, user_movies__is_favorite=True).order_by('-watch_date')
+        paginator = self.pagination_class()
+        users_page = paginator.paginate_queryset(queryset, request)
+        serialize_followers = ProfileMovieSerializer(users_page, many=True)
+        
+        return paginator.get_paginated_response(serialize_followers.data)
+
+    @action(detail=True, methods=['get'], url_path='movie-favorites')
+    def user_movie_favorites(self, request, pk):
+        user = get_object_or_404(get_user_model(), username=pk)
+        queryset = Movie.objects.filter(user_movies__user=user, user_movies__is_favorite=True).order_by('-watch_date')
+        paginator = self.pagination_class()
+        users_page = paginator.paginate_queryset(queryset, request)
+        serialize_followers = ProfileMovieSerializer(users_page, many=True)
+        
+        return paginator.get_paginated_response(serialize_followers.data)
+    
+    # Show
+    @action(detail=False, methods=['get'], url_path='show-favorites')
+    def show_favorites(self, request):
+        queryset = Show.objects.filter(user_shows__user=request.user, user_shows__is_favorite=True)\
+            .annotate(last_watched_episode_date=Max('episodes__user_episodes__watch_date')) \
+            .order_by('-last_watched_episode_date')
+        paginator = self.pagination_class()
+        users_page = paginator.paginate_queryset(queryset, request)
+        serialize_followers = ProfileShowSerializer(users_page, many=True)
+        
+        return paginator.get_paginated_response(serialize_followers.data)
+
+    @action(detail=True, methods=['get'], url_path='show-favorites')
+    def show_movie_favorites(self, request, pk):
+        user = get_object_or_404(get_user_model(), username=pk)
+        queryset = Show.objects.filter(user_shows__user=user, user_shows__is_favorite=True)\
+            .annotate(last_watched_episode_date=Max('episodes__user_episodes__watch_date')) \
+            .order_by('-last_watched_episode_date')
+        paginator = self.pagination_class()
+        users_page = paginator.paginate_queryset(queryset, request)
+        serialize_followers = ProfileShowSerializer(users_page, many=True)
+        
+        return paginator.get_paginated_response(serialize_followers.data)
 
 ####################################################
 # Actor section
