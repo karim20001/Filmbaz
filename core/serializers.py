@@ -36,8 +36,8 @@ class UserSignUpSerializer(serializers.ModelSerializer):
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
-    password1 = serializers.CharField(write_only=True, required=True)
-    password2 = serializers.CharField(write_only=True, required=True)
+    password1 = serializers.CharField(write_only=True)
+    password2 = serializers.CharField(write_only=True)
 
 
     class Meta:
@@ -53,10 +53,11 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     def validate(self, data):
         user = self.context['request'].user
         user_instance = get_object_or_404(CustomUser, id=user.id)
-        if data['password'] !=  user_instance.password:
+        
+        if not user_instance.check_password(data.get('password')):
             raise serializers.ValidationError("old password not correct")
         
-        if data['password1'] != data['password2']:
+        if data.get('password1') != data.get('password2'):
             raise serializers.ValidationError("Passwords do not match.")
         return data
 

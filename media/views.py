@@ -990,15 +990,15 @@ class ProfileView(viewsets.GenericViewSet):
         user = request.user
         data = request.data
 
-        if not data['username']:
-            data['username'] = user.username
+        # if not data['username']:
+        #     data['username'] = user.username
 
-        if not (data['password1'] or data['password2'] or data['password']):
-            data['password'] = user.password
-            data['password1'] = user.password
-            data['password2'] = user.password
+        # if not (data['password1'] or data['password2'] or data['password']):
+        #     data['password'] = user.password
+        #     data['password1'] = user.password
+        #     data['password2'] = user.password
 
-        serializer = UserUpdateSerializer(request.user, data=request.data, context={'request': request}, partial=True)
+        serializer = UserUpdateSerializer(user, data=data, context={'request': request}, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(status.HTTP_202_ACCEPTED)
@@ -1191,7 +1191,7 @@ class ProfileView(viewsets.GenericViewSet):
 # Favorite section
     @action(detail=False, methods=['get'], url_path='movie-favorites')
     def movie_favorites(self, request):
-        queryset = Movie.objects.filter(user_movies__user=request.user, user_movies__is_favorite=True).order_by('-watch_date')
+        queryset = Movie.objects.filter(user_movies__user=request.user, user_movies__is_favorite=True).order_by('-user_movies__watched_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
         serialize_followers = ProfileMovieSerializer(users_page, many=True)
@@ -1201,7 +1201,7 @@ class ProfileView(viewsets.GenericViewSet):
     @action(detail=True, methods=['get'], url_path='movie-favorites')
     def user_movie_favorites(self, request, pk):
         user = get_object_or_404(get_user_model(), username=pk)
-        queryset = Movie.objects.filter(user_movies__user=user, user_movies__is_favorite=True).order_by('-watch_date')
+        queryset = Movie.objects.filter(user_movies__user=user, user_movies__is_favorite=True).order_by('-users_movies__watched_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
         serialize_followers = ProfileMovieSerializer(users_page, many=True)
