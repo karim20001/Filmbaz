@@ -507,7 +507,7 @@ class EpisodeView(mixins.RetrieveModelMixin,
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'create']:
             show_id = self.kwargs.get('series_pk')
             return Episode.objects.filter(show__id=show_id).order_by('season', 'episode_number')
         
@@ -544,18 +544,22 @@ class EpisodeView(mixins.RetrieveModelMixin,
 
         return Response(grouped_episodes)
     
-    def create(self, request, *args, **kwargs):
+    @action(detail=True, methods=['post'])
+    def add(self, request, *args, **kwargs):
         episode_id = self.kwargs['pk']
         episode = get_object_or_404(Episode, pk=episode_id)
         user = request.user
 
+        if UserEpisode.objects.filter(user=user, episode=episode).exists():
+            return Response({"detail": "episode already watched"}, status.HTTP_400_BAD_REQUEST)
+
         if not UserShow.objects.filter(user=user, show=episode.show).exists():
-            UserShow.create(user=user, show=episode.show)
+            UserShow.objects.create(user=user, show=episode.show)
             episode.show.users_added_count += 1
             episode.show.save()
         
-        UserEpisode.create(user=user, episode=episode)
-        user_show = UserShow.objects.filter(user=user, show=episode.show)
+        UserEpisode.objects.get_or_create(user=user, episode=episode)
+        user_show = get_object_or_404(UserShow, user=user, show=episode.show)
         if user_show.status == None:
             user_show.status = user_show.status.WATCHING
             user_show.save()

@@ -103,6 +103,8 @@ ITEM_PIPELINES = {
 
 ROBOTSTXT_OBEY = False
 
+# LOG_LEVEL = 'ERROR'
+
 DOWNLOAD_DELAY = 2  # Delay between requests in seconds
 
 
