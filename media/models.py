@@ -16,24 +16,32 @@ class Genre(models.Model):
         return self.name
 
 
+def show_cover_upload_to(instance, filename):
+        """
+        Dynamically generates the path for the show cover photo.
+        """
+        return f'shows/{instance.name}/{filename}'
+
+
 class Show(models.Model):
     id = models.UUIDField(default=uuid4, primary_key=True)
+    imdb_url = models.URLField(unique=True, null=True, blank=True)
     name = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
-    season_count = models.IntegerField(default=1)
+    season_count = models.IntegerField(default=1, null=True, blank=True)
     imdb_rate = models.DecimalField(max_digits=2, decimal_places=1)
     users_rate = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
-    release_year = models.IntegerField()
+    release_year = models.IntegerField(null=True, blank=True)
     end_year = models.IntegerField(null=True, blank=True, default=None)
-    duration = models.IntegerField()  # Duration in minutes
-    release_time = models.TimeField()
+    duration = models.IntegerField(null=True, blank=True)  # Duration in minutes
+    release_time = models.TimeField(null=True, blank=True)
     release_day = models.CharField(max_length=50)  # Example: "Monday"
     is_released = models.BooleanField()
     network = models.CharField(max_length=255, null=True, blank=True)
     users_added_count = models.PositiveIntegerField(default=0)
     users_rate_count = models.PositiveIntegerField(default=0)
     genres = models.ManyToManyField(Genre)
-    cover_photo = models.ImageField(upload_to='shows/photos/', null=True, blank=True)
+    cover_photo = models.ImageField(upload_to=show_cover_upload_to, null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} | Season {self.season_count}"

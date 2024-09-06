@@ -23,10 +23,10 @@ class MovieSpider(scrapy.Spider):
         super(MovieSpider, self).__init__(*args, **kwargs)
 
         chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36")
+        # chrome_options.add_argument("--headless")
+        # chrome_options.add_argument("--disable-gpu")
+        # chrome_options.add_argument("--window-size=1920,1080")
+        # chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36")
 
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
@@ -74,6 +74,7 @@ class MovieSpider(scrapy.Spider):
                                                         for (let name of names) caches.delete(name);
                                                     });
                                                 }""")
+                    break
 
                 else:
                     break
@@ -82,31 +83,50 @@ class MovieSpider(scrapy.Spider):
             self.logger.error(f'Error occurred: {str(e)}')
         finally:
             print("successfully movies crawled!")
-            self.driver.quit()
     
 
     async def parse_movie(self, response):
-        name = response.css("span.hero__primary-text::text")
-        duration = response.css("div.ipc-metadata-list-item__content-container::text").getall()
-        imdb_rate = response.css('span.sc-eb51e184-1.ljxVSS::text').get()
-        description = response.css('div.ipc-html-content-inner-div::text').get()
-        release_date = response.css('a.ipc-metadata-list-item__list-content-item.ipc-metadata-list-item__list-content-item--link::text').get().split('(')
-        is_released = response.css('div.sc-5766672e-1.kDBNLe::text').get()
-        genres = response.css(
-            'section.ipc-page-section.ipc-page-section--base.celwidget.ul.ipc-inline-list.ipc-inline-list--show-dividers.ipc-inline-list--inline.ipc-metadata-list-item__list-content.base.li.ipc-inline-list__item::text'
-            ).getall()
-        cover_photo = response.css('img.ipc-image::attr(src)').get()
+        try:
+            self.driver.get(response.url)
+            # Scroll down to storyline to load data
+            storyline_section = self.driver.find_element(By.XPATH, "//span[contains(text(), 'Storyline')]")
+            self.driver.execute_script("arguments[0].scrollIntoView(true);", storyline_section)
+            # Wait data load
+            WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Genres')]"))
+           )
 
-        print(f'{name}  {duration} {imdb_rate} {description}  {release_date}  {is_released} {genres}  {cover_photo}')
+            name = response.css("span.hero__primary-text::text").get()
+            duration = response.css("div.ipc-metadata-list-item__content-container::text").getall()
+            imdb_rate = response.css('span.sc-eb51e184-1.ljxVSS::text').get()
+            description = response.css('div.ipc-html-content-inner-div::text').get()
+            parent_released_date = response.css("a.ipc-metadata-list-item__label:contains('Release date')").xpath('parent::*')
+            release_date = parent_released_date.css('a.ipc-metadata-list-item__list-content-item.ipc-metadata-list-item__list-content-item--link::text').get().split(' (')[0]
+            is_released = response.css('div.sc-5766672e-1.kDBNLe:contains("Genres")').get()
+            span_element = self.driver.find_element(By.XPATH, "//span[contains(text(), 'Genres')]")
+            parent_genres = span_element.find_element(By.XPATH, '..')
+            genre_elements = parent_genres.find_elements(By.CSS_SELECTOR, 'a.ipc-metadata-list-item__list-content-item--link')
+            genres = [element.text for element in genre_elements]
+            cover_photo = response.css('img.ipc-image::attr(src)').get()
+            print(f'name: {name}  duration:{duration} rate:{imdb_rate}  description:{description}  release_date:{release_date}  is_released:{is_released} genres:{genres}  cover_photo:{cover_photo}')
 
-        yield {
-            'name': name,
-            'duration': duration,
-            'imdb_rate': imdb_rate,
-            'description': description,
-            'release_date': release_date,
-            'is_released': is_released,
-            'genres': genres,
-            'cover_photo': cover_photo
-        }
-        
+            yield {
+                'name': name,
+                'duration': duration,
+                'imdb_rate': imdb_rate,
+                'description': description,
+                'release_date': release_date,
+                'is_released': is_released,
+                'genres': genres,
+                'cover_photo': cover_photo
+            }
+
+        except Exception as e:
+            self.logger.error(f'Error in parse_movie: {str(e)}')
+
+        finally:
+            print("Finished processing movie page.")
+    
+    def close(self, reason):
+        if self.driver:
+            self.driver.quit()
