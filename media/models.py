@@ -64,8 +64,10 @@ def episode_cover_upload_to(instance, filename):
 
 class Episode(models.Model):
     id = models.UUIDField(default=uuid4, primary_key=True)
+    imdb_url = models.URLField(unique=True, null=True, blank=True)
     show = models.ForeignKey(Show, related_name='episodes', on_delete=models.CASCADE)
     season = models.IntegerField()
+    duration = models.IntegerField(null=True, blank=True)
     imdb_rate = models.DecimalField(max_digits=2, decimal_places=1)
     users_rate = models.DecimalField(max_digits=2, decimal_places=1, null=True, blank=True)
     episode_number = models.IntegerField()

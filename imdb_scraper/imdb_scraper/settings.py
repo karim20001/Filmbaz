@@ -99,15 +99,19 @@ DOWNLOADER_MIDDLEWARES = {
 
 ITEM_PIPELINES = {
    'imdb_scraper.pipelines.ActorPipeline': 300,
-   'imdb_scraper.pipelines.MoviePipeline': 300,
-   'imdb_scraper.pipelines.ShowPipeline': 300,
+   'imdb_scraper.pipelines.MoviePipeline': 200,
+   'imdb_scraper.pipelines.ShowPipeline': 250,
+   'imdb_scraper.pipelines.EpisodePipeline': 275,
 }
 
 ROBOTSTXT_OBEY = False
 
-LOG_LEVEL = 'ERROR'
+# LOG_LEVEL = 'ERROR'
+# LOG_LEVEL = 'DEBUG'
 
 DOWNLOAD_DELAY = 2  # Delay between requests in seconds
+
+# CONCURRENT_REQUESTS = 1
 
 
 import sys
