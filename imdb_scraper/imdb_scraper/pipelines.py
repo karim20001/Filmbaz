@@ -7,7 +7,7 @@
 # useful for handling different item types with a single interface
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, date
 from urllib.parse import urlparse
 from scrapy.exceptions import DropItem
 from media.models import Actor, Episode, Movie, Genre, Show
@@ -225,8 +225,8 @@ class EpisodePipeline:
                 item['imdb_rate'] = float(item['imdb_rate'])
             
             if 'season_episode' in item and item['season_episode']:
-                item['season'] = item['season_episode'][0][1]
-                item['episode'] = item['season_episode'][0][1]
+                item['season'] = item['season_episode'][0].replace('S', '')
+                item['episode'] = item['season_episode'][2].replace('E', '')
             
             if 'duration' in item and item['duration']:
                 duration_parts = item['duration']
@@ -239,12 +239,15 @@ class EpisodePipeline:
 
             if 'release_date' in item and item['release_date']:
                 item['release_date'] = datetime.strptime(item['release_date'], '%B %d, %Y').date()
-                if item['release_date'] > datetime.now():
+                if item['release_date'] >= date.today():
                     item['is_released'] = False
+                else:
+                    item['is_released'] = True
             else:
                 item['is_released'] = False
             
-            show = await sync_to_async(Show.objects.get)(imdb_url=item['show_url'])
+            show_url = item['show_url'].replace('episodes/', '')
+            show = await sync_to_async(Show.objects.get)(imdb_url=show_url)
 
             if 'cover_photo' in item and item['cover_photo']:
                 # Download the image

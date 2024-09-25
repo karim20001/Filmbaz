@@ -98,9 +98,9 @@ DOWNLOADER_MIDDLEWARES = {
 }
 
 ITEM_PIPELINES = {
-   'imdb_scraper.pipelines.ActorPipeline': 300,
-   'imdb_scraper.pipelines.MoviePipeline': 200,
-   'imdb_scraper.pipelines.ShowPipeline': 250,
+#    'imdb_scraper.pipelines.ActorPipeline': 300,
+#    'imdb_scraper.pipelines.MoviePipeline': 200,
+#    'imdb_scraper.pipelines.ShowPipeline': 250,
    'imdb_scraper.pipelines.EpisodePipeline': 275,
 }
 
