@@ -97,12 +97,12 @@ DOWNLOADER_MIDDLEWARES = {
     'scrapy_user_agents.middlewares.RandomUserAgentMiddleware': 400,
 }
 
-ITEM_PIPELINES = {
+# ITEM_PIPELINES = {
 #    'imdb_scraper.pipelines.ActorPipeline': 300,
 #    'imdb_scraper.pipelines.MoviePipeline': 200,
 #    'imdb_scraper.pipelines.ShowPipeline': 250,
-   'imdb_scraper.pipelines.EpisodePipeline': 275,
-}
+#    'imdb_scraper.pipelines.EpisodePipeline': 275,
+# }
 
 ROBOTSTXT_OBEY = False
 

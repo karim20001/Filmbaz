@@ -19,6 +19,13 @@ class MovieSpider(scrapy.Spider):
     name = 'movie_spider'
     allowed_domains = ['imdb.com']
 
+    # Override global ITEM_PIPELINES with spider-specific pipelines
+    custom_settings = {
+        'ITEM_PIPELINES': {
+            'imdb_scraper.pipelines.MoviePipeline': 200,
+        }
+    }
+
     def __init__(self, *args, **kwargs):
         super(MovieSpider, self).__init__(*args, **kwargs)
 

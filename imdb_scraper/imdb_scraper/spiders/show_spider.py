@@ -19,6 +19,13 @@ class ShowSpider(scrapy.Spider):
     name = 'show_spider'
     allowed_domains = ['imdb.com']
 
+    # Override global ITEM_PIPELINES with spider-specific pipelines
+    custom_settings = {
+        'ITEM_PIPELINES': {
+            'imdb_scraper.pipelines.ShowPipeline': 250,
+        }
+    }
+
     def __init__(self, *args, **kwargs):
         super(ShowSpider, self).__init__(*args, **kwargs)
 

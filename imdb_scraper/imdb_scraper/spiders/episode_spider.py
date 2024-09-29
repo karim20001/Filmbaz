@@ -21,6 +21,13 @@ class EpisodeSpider(scrapy.Spider):
     name = 'episode_spider'
     allowed_domains = ['imdb.com']
 
+    # Override global ITEM_PIPELINES with spider-specific pipelines
+    custom_settings = {
+        'ITEM_PIPELINES': {
+            'imdb_scraper.pipelines.EpisodePipeline': 275,
+        }
+    }
+
     def __init__(self, *args, **kwargs):
         super(EpisodeSpider, self).__init__(*args, **kwargs)
 

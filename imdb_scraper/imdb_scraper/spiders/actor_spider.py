@@ -19,6 +19,13 @@ class ActorSpider(scrapy.Spider):
     name = 'actor_spider'
     allowed_domains = ['imdb.com']
 
+    # Override global ITEM_PIPELINES with spider-specific pipelines
+    custom_settings = {
+        'ITEM_PIPELINES': {
+            'imdb_scraper.pipelines.ActorPipeline': 300,
+        }
+    }
+
     def __init__(self, *args, **kwargs):
         super(ActorSpider, self).__init__(*args, **kwargs)
         chrome_options = Options()
