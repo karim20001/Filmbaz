@@ -27,7 +27,10 @@ SECRET_KEY = 'django-insecure--p7$^(i=$7ais7vf^8z99t&2lp((m4k6_4z(=c^66$8+)-v4_d
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    '0.0.0.0',
+    '127.0.0.1'
+]
 
 
 # Application definition
@@ -45,7 +48,7 @@ INSTALLED_APPS = [
     'django_filters',
     'core',
     'media',
-    'imdb_scraper',
+    'imdb_scraper.imdb_scraper.apps.ImdbScraperConfig',
 ]
 
 MIDDLEWARE = [
@@ -65,6 +68,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 INTERNAL_IPS = [
     # ...
     '127.0.0.1',
+    '0.0.0.0',
     # ...
 ]
 
@@ -135,6 +139,19 @@ SIMPLE_JWT = {
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': 'YOUR_SECRET_KEY',
 }
+
+# Celery settings
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Use Redis as broker
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'  # Use Redis as result backend
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_BEAT_SCHEDULE = {
+    'run-update-episode-spider': {
+        'task': 'imdb_scraper.imdb_scraper.tasks.run_update_episode_spider',
+        'schedule': 60,
+    },
+}
+
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 

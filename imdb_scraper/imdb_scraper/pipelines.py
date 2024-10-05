@@ -290,3 +290,42 @@ class EpisodePipeline:
             print(f'error: {str(e)}')
         
         return item
+    
+
+class UpdateEpisodePipeline:
+
+    async def process_item(self, item, spider):
+        try:
+            if 'imdb_rate' in item and item['imdb_rate']:
+                item['imdb_rate'] = float(item['imdb_rate'])
+            
+            if 'release_date' in item and item['release_date']:
+                item['release_date'] = datetime.strptime(item['release_date'], '%B %d, %Y').date()
+                if item['release_date'] >= date.today():
+                    item['is_released'] = False
+                else:
+                    item['is_released'] = True
+            else:
+                item['is_released'] = False
+    
+            print(f"\n\n{item['source']}\n")
+            # if episode.imdb_rate != item['imdb_rate'] or episode.is_released != item['is_released'] or episode.release_date != item['release_date']:
+            episode = await sync_to_async(Episode.objects.get)(imdb_url=item['source'])
+            is_data_changed = False
+            if episode.imdb_rate != item['imdb_rate']:
+                episode.imdb_rate = item['imdb_rate']
+                is_data_changed = True
+            if episode.is_released != item['is_released']:
+                episode.is_released = item['is_released']
+                is_data_changed = True
+            if episode.released_date != item['release_date']:
+                episode.released_date = item['release_date']
+                is_data_changed = True
+            
+            if is_data_changed:
+                await sync_to_async(episode.save)()
+        
+        except Exception as e:
+            print(f'error: {str(e)}')
+        
+        return item

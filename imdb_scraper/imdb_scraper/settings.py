@@ -9,8 +9,8 @@
 
 BOT_NAME = "imdb_scraper"
 
-SPIDER_MODULES = ["imdb_scraper.spiders"]
-NEWSPIDER_MODULE = "imdb_scraper.spiders"
+SPIDER_MODULES = ["imdb_scraper.imdb_scraper.spiders"]
+NEWSPIDER_MODULE = "imdb_scraper.imdb_scraper.spiders"
 
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
@@ -89,7 +89,7 @@ ROBOTSTXT_OBEY = True
 
 # Set settings whose default value is deprecated to a future-proof value
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
-TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+# TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 
 DOWNLOADER_MIDDLEWARES = {
@@ -106,7 +106,7 @@ DOWNLOADER_MIDDLEWARES = {
 
 ROBOTSTXT_OBEY = False
 
-# LOG_LEVEL = 'ERROR'
+LOG_LEVEL = 'ERROR'
 # LOG_LEVEL = 'DEBUG'
 
 DOWNLOAD_DELAY = 2  # Delay between requests in seconds

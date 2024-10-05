@@ -214,3 +214,17 @@ class Comment(models.Model):
     @property
     def like_count(self):
         return self.likes.count()
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='notifications', on_delete=models.CASCADE)
+    notification_type = models.CharField(max_length=50)
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, blank=True)
+    object_id = models.UUIDField(null=True, blank=True)
+    content_object = GenericForeignKey('content_type', 'object_id')
+    message = models.CharField(max_length=255)
+    is_read = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Notification for {self.user.username}: {self.message}"
