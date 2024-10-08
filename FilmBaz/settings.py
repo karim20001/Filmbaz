@@ -42,10 +42,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # third pary libraries
     'debug_toolbar',
     'rest_framework',
     'corsheaders',
     'django_filters',
+    'channels',
+    # other apps
     'core',
     'media',
     'imdb_scraper.imdb_scraper.apps.ImdbScraperConfig',
@@ -178,3 +181,15 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'core.CustomUser'
+
+
+ASGI_APPLICATION = 'FilmBaz.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [('127.0.0.1', 6379)], # Redis Server
+        }
+    }
+}

@@ -10,19 +10,18 @@ from scrapy.crawler import CrawlerProcess
 from celery import shared_task
 from .spiders.update_episode import UpdateEpisodeSpider
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 def run_spider():
     os.environ['SCRAPY_SETTINGS_MODULE'] = 'imdb_scraper.imdb_scraper.settings'
-    process = CrawlerProcess(get_project_settings())
+    settings = get_project_settings()
+    settings.set('LOG_LEVEL', 'ERROR')
+    process = CrawlerProcess(settings)
+
     process.crawl(UpdateEpisodeSpider)
     process.start()  # This starts the Twisted reactor
 
 @shared_task
-def run_update_episode_spider():
-    logger.info("Starting spider in a new process...")
-    
+def run_update_episode_spider():    
     spider_process = Process(target=run_spider)
     spider_process.start()
     spider_process.join()  # Wait for the spider to complete

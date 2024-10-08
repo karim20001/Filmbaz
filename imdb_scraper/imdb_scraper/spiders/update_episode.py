@@ -23,23 +23,19 @@ class UpdateEpisodeSpider(scrapy.Spider):
 
     # Override global ITEM_PIPELINES with spider-specific pipelines
     custom_settings = {
-        # 'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36',
         'ITEM_PIPELINES': {
             'imdb_scraper.imdb_scraper.pipelines.UpdateEpisodePipeline': 350,
         },
-        'LOG_LEVEL': 'ERROR'
-
-        # 'DOWNLOAD_DELAY': 3,  # Add a delay to avoid being blocked for too many request
     }
 
     def __init__(self, *args, **kwargs):
         super(UpdateEpisodeSpider, self).__init__(*args, **kwargs)
 
         chrome_options = Options()
-        # chrome_options.add_argument("--headless")
-        # chrome_options.add_argument("--disable-gpu")
-        # chrome_options.add_argument("--window-size=1920,1080")
-        # chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36")
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36")
 
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
@@ -75,7 +71,7 @@ class UpdateEpisodeSpider(scrapy.Spider):
             page_source = self.driver.page_source
             scrapy_selector = Selector(text=page_source)
 
-            imdb_rate = scrapy_selector.css('span.iQZtLP::text').get()
+            imdb_rate = scrapy_selector.css('span.imUuxf::text').get()
             parent_released_date = scrapy_selector.css("a.ipc-metadata-list-item__label:contains('Release date')").xpath('parent::*')
             release_date = parent_released_date.css('a.ipc-metadata-list-item__list-content-item.ipc-metadata-list-item__list-content-item--link::text').get().split(' (')[0]
 

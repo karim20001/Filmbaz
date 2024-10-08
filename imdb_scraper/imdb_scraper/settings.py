@@ -106,7 +106,6 @@ DOWNLOADER_MIDDLEWARES = {
 
 ROBOTSTXT_OBEY = False
 
-LOG_LEVEL = 'ERROR'
 # LOG_LEVEL = 'DEBUG'
 
 DOWNLOAD_DELAY = 2  # Delay between requests in seconds
@@ -124,3 +123,4 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'FilmBaz.settings'
 django.setup()
 
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+LOG_LEVEL = 'ERROR'
