@@ -1021,6 +1021,8 @@ class ProfileView(viewsets.GenericViewSet):
     def user_movies(self, request, pk=None):
         user_model = get_user_model()
         user = get_object_or_404(user_model, username=pk)
+        if user.private and (not Follow.objects.filter(user=request.user, follow=user, is_accepted=True).exists()):
+            return Response({"message": "You should follow this user first"}, status=status.HTTP_200_OK)
         data = self.get_movies(user)
         return Response(data)
     
@@ -1051,6 +1053,9 @@ class ProfileView(viewsets.GenericViewSet):
     def user_shows(self, request, pk):
         user_model = get_user_model()
         user = get_object_or_404(user_model, username=pk)
+        if user.private and (not Follow.objects.filter(user=request.user, follow=user, is_accepted=True).exists()):
+            return Response({"message": "You should follow this user first"}, status=status.HTTP_200_OK)
+    
         data = self.categorized_show(user)
         return Response(data)
     
@@ -1140,6 +1145,9 @@ class ProfileView(viewsets.GenericViewSet):
     def user_follower(self, request, pk):
         user_model = get_user_model()
         user = get_object_or_404(user_model, username=pk)
+        if user.private and (not Follow.objects.filter(user=request.user, follow=user, is_accepted=True).exists()):
+            return Response({"message": "You should follow this user first"}, status=status.HTTP_200_OK)
+        
         queryset = Follow.objects.filter(follow=user).order_by('-follow_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
@@ -1162,6 +1170,9 @@ class ProfileView(viewsets.GenericViewSet):
     def user_followings(self, request, pk):
         user_model = get_user_model()
         user = get_object_or_404(user_model, username=pk)
+        if user.private and (not Follow.objects.filter(user=request.user, follow=user, is_accepted=True).exists()):
+            return Response({"message": "You should follow this user first"}, status=status.HTTP_200_OK)
+        
         queryset = Follow.objects.filter(user=user).order_by('-follow_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
@@ -1177,11 +1188,26 @@ class ProfileView(viewsets.GenericViewSet):
         followed_user = get_object_or_404(user_model, username=pk)
         check_exist = Follow.objects.filter(user=user, follow=followed_user)
         if not check_exist:
-            Follow.objects.create(user=user, follow=followed_user)
-            return Response({"message": "followed"}, status.HTTP_201_CREATED)
+            if followed_user.private:
+                Follow.objects.create(user=user, follow=followed_user, is_accepted=False)
+                return Response({"message": "requested"}, status.HTTP_201_CREATED)
+            else:
+                Follow.objects.create(user=user, follow=followed_user)
+                return Response({"message": "followed"}, status.HTTP_201_CREATED)
 
         else:
             return Response({"message": "user already followed"}, status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['patch'], url_path='accept-follow-request')
+    def accept_follow(self, request, pk):
+        user = request.user
+        user_model = get_user_model()
+        following_user = get_object_or_404(user_model, username=pk)
+
+        follow_request = get_object_or_404(Follow, user=following_user, follow=user, is_accepted=False)
+        follow_request.is_accepted = True
+        follow_request.save()
+        return Response({"message": "follow request accepted"}, status.HTTP_202_ACCEPTED)
     
     @action(detail=True, methods=['delete'])
     def unfollow(self, request, pk):
@@ -1205,6 +1231,9 @@ class ProfileView(viewsets.GenericViewSet):
     @action(detail=True, methods=['get'], url_path='movie-favorites')
     def user_movie_favorites(self, request, pk):
         user = get_object_or_404(get_user_model(), username=pk)
+        if user.private and (not Follow.objects.filter(user=request.user, follow=user, is_accepted=True).exists()):
+            return Response({"message": "You should follow this user first"}, status=status.HTTP_200_OK)
+        
         queryset = Movie.objects.filter(user_movies__user=user, user_movies__is_favorite=True).order_by('-users_movies__watched_date')
         paginator = self.pagination_class()
         users_page = paginator.paginate_queryset(queryset, request)
@@ -1227,6 +1256,9 @@ class ProfileView(viewsets.GenericViewSet):
     @action(detail=True, methods=['get'], url_path='show-favorites')
     def show_movie_favorites(self, request, pk):
         user = get_object_or_404(get_user_model(), username=pk)
+        if user.private and (not Follow.objects.filter(user=request.user, follow=user, is_accepted=True).exists()):
+            return Response({"message": "You should follow this user first"}, status=status.HTTP_200_OK)
+        
         queryset = Show.objects.filter(user_shows__user=user, user_shows__is_favorite=True)\
             .annotate(last_watched_episode_date=Max('episodes__user_episodes__watch_date')) \
             .order_by('-last_watched_episode_date')
@@ -1269,13 +1301,15 @@ class ActorView(viewsets.ModelViewSet):
             if page is not None:
                 serializer = ActorShowSerializer(page, many=True)
                 return self.get_paginated_response(serializer.data)
+            
         elif filter_type == 'movies':
             page = self.paginate_queryset(movies)
             if page is not None:
                 serializer = ActorMovieSerializer(page, many=True)
                 return self.get_paginated_response(serializer.data)
+            
+        # If no filter_type is provided, return both shows and movies paginated together
         else:
-            # If no filter_type is provided, return both shows and movies paginated together
             combined = shows + movies
             page = self.paginate_queryset(combined)
             if page is not None:

@@ -568,7 +568,14 @@ class FollowingSerializer(serializers.ModelSerializer):
         
     def get_is_following(self, obj):
         user = self.context['request'].user
-        return Follow.objects.filter(user=user, follow=obj.follow).exists()
+        exists = Follow.objects.filter(user=user, follow=obj.follow).first()
+        if exists:
+            if exists.is_accepted:
+                return True
+            else:
+                return "Requested"
+        return False  
+
 
 
 class FollowerSerializer(serializers.ModelSerializer):
@@ -586,8 +593,13 @@ class FollowerSerializer(serializers.ModelSerializer):
         
     def get_is_following(self, obj):
         user = self.context['request'].user
-        return Follow.objects.filter(user=user, follow=obj.user).exists()
-        
+        exists = Follow.objects.filter(user=user, follow=obj.user).first()
+        if exists:
+            if exists.is_accepted:
+                return True
+            else:
+                return "Requested"
+        return False   
 #################################################
 # Actor Section
 

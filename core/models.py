@@ -14,6 +14,7 @@ class CustomUser(AbstractUser):
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, null=True, blank=True)
     profile_photo = models.ImageField(upload_to='users/photos/', validators=[validate_image_size], null=True, blank=True)
     cover_photo = models.ImageField(upload_to='users/covers/', validators=[validate_image_size], null=True, blank=True)
+    private = models.BooleanField(default=False)
     is_pro = models.BooleanField(default=False)
 
     def __str__(self):
