@@ -55,7 +55,7 @@ class MovieWatchListView(viewsets.ReadOnlyModelViewSet):
         movie_ids = user_movies.values_list('movie_id', flat=True)
         movies = Movie.objects.filter(id__in=movie_ids, release_date__lte=datetime.date.today())
         serializer = self.get_serializer(movies, many=True)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
@@ -363,7 +363,7 @@ class ShowWatchListView(viewsets.GenericViewSet):
         # List to hold the next episodes to watch
         next_episodes = []
         old_episodes = []
-        time_threshold = timezone.now() - datetime.timedelta(minutes=8) # assuming 4 weeks as the threshold
+        time_threshold = timezone.now() - datetime.timedelta(weeks=4) # assuming 4 weeks as the threshold
 
         for show, last_episode in last_watched.items():
             next_episode = Episode.objects.filter(show=show, season=last_episode.season, episode_number=last_episode.episode_number + 1).first()
@@ -462,7 +462,7 @@ class SingleShowView(viewsets.GenericViewSet):
         serializer = UserShowSerializer(user_show, request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response({"detail": "update success"}, status.HTTP_200_OK)
+        return Response({"detail": "update success"}, status.HTTP_202_ACCEPTED)
     
     def destroy(self, request, pk):
         show = get_object_or_404(Show, pk=pk)
@@ -1005,7 +1005,7 @@ class ProfileView(viewsets.GenericViewSet):
         serializer = UserUpdateSerializer(user, data=data, context={'request': request}, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(status.HTTP_202_ACCEPTED)
+        return Response(status=status.HTTP_202_ACCEPTED)
     
 #############################################################################
     # Profile Movie Section

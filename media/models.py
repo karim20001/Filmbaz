@@ -187,6 +187,9 @@ class Follow(models.Model):
     is_accepted = models.BooleanField(default=True)
     follow_date = models.DateField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('user', 'follow')
+
     def __str__(self):
         return f"{self.user.username} follows {self.follow.username}"
 
