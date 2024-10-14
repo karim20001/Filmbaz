@@ -41,7 +41,7 @@ class Show(models.Model):
     users_added_count = models.PositiveIntegerField(default=0)
     users_rate_count = models.PositiveIntegerField(default=0)
     genres = models.ManyToManyField(Genre)
-    cover_photo = models.ImageField(upload_to=show_cover_upload_to, null=True, blank=True)
+    cover_photo = models.ImageField(upload_to=show_cover_upload_to, null=True, blank=True, max_length=255)
 
     def __str__(self):
         return f"{self.name} | Season {self.season_count}"
@@ -75,7 +75,7 @@ class Episode(models.Model):
     is_released = models.BooleanField()
     name = models.CharField(max_length=255)
     description = models.TextField()
-    cover_photo = models.ImageField(upload_to=episode_cover_upload_to, null=True, blank=True)
+    cover_photo = models.ImageField(upload_to=episode_cover_upload_to, null=True, blank=True, max_length=255)
 
     def __str__(self):
         return f"{self.show.name} S{self.season}E{self.episode_number} - {self.name}"
@@ -94,7 +94,7 @@ class Movie(models.Model):
     genres = models.ManyToManyField(Genre)
     users_rate_count = models.PositiveIntegerField(default=0)
     users_added_count = models.PositiveIntegerField(default=0)
-    cover_photo = models.ImageField(upload_to='movies/photos/', null=True, blank=True)
+    cover_photo = models.ImageField(upload_to='movies/photos/', null=True, blank=True, max_length=255)
 
     def __str__(self):
         return self.name
@@ -112,7 +112,7 @@ class Actor(models.Model):
     bio = models.TextField(null=True, blank=True)
     birth_date = models.DateField()
     birth_city = models.CharField(max_length=255)
-    profile_photo = models.ImageField(upload_to='actors/photos/', null=True, blank=True)
+    profile_photo = models.ImageField(upload_to='actors/photos/', null=True, blank=True, max_length=255)
 
     def __str__(self):
         return self.name
@@ -125,7 +125,7 @@ class Cast(models.Model):
     actor = models.ForeignKey(Actor, related_name='cast', on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     likes = models.PositiveIntegerField(default=0)
-    photo = models.ImageField(upload_to='cast/photos/', null=True, blank=True)
+    photo = models.ImageField(upload_to='cast/photos/', null=True, blank=True, max_length=255)
 
     def __str__(self):
         return f"{self.actor.name} in {self.content_object.name}"

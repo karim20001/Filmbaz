@@ -101,8 +101,12 @@ WSGI_APPLICATION = 'FilmBaz.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'filmbaz',
+        'USER': 'filmbaz_test',
+        'PASSWORD': '13802001',
+        'HOST': 'localhost',
+        'PORT': '5432',       # Default PostgreSQL port
     }
 }
 

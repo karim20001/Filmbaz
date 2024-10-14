@@ -476,8 +476,6 @@ class SingleShowView(viewsets.GenericViewSet):
     @action(detail=True, methods=['get'])
     def watchers(self, request, pk):
         show = get_object_or_404(Show, pk=pk)
-
-        # Get the list of users that the current user is following
         following_users = request.user.following.values_list('follow', flat=True)
 
         # Query to get the last watched episode for each following user in the specific series
