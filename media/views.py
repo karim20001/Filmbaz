@@ -112,17 +112,17 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
         user = request.user
         user_movie = UserMovie.objects.filter(user=user, movie=movie).first()
 
-        data = request.data
+        data = request.data.copy()
         watched_status = data.pop('watched', None)
 
         if watched_status and watched_status == True and not user_movie:
             UserMovie.objects.create(user=user, movie=movie, watched=True, watched_date=datetime.datetime.now())
             movie.users_added_count += 1
             movie.save()
-            return Response({'detail': 'movie add and watched'}, status.HTTP_201_CREATED)
+            return Response({'message': 'movie add and watched'}, status.HTTP_201_CREATED)
         
         elif not user_movie:
-            return Response({'detail': 'movie not watched yet'}, status.HTTP_400_BAD_REQUEST)
+            return Response({'message': 'movie not watched yet'}, status.HTTP_400_BAD_REQUEST)
 
         if watched_status is not None:
             if not watched_status and user_movie.watched:
@@ -155,13 +155,13 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
                 new_favorite_cast = get_object_or_404(Cast, id=new_favorite_cast_id)
                 user_movie.favorite_cast = new_favorite_cast
 
-        else:
-            return Response({"detail": "cast is not related"}, status.HTTP_400_BAD_REQUEST)
+        elif new_favorite_cast_id:
+            return Response({"message": "cast is not related"}, status.HTTP_400_BAD_REQUEST)
 
         serializer = self.get_serializer(user_movie, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response({'detail': 'update success'}, status.HTTP_200_OK)
+        return Response({'message': 'update success'}, status.HTTP_202_ACCEPTED)
 
     def destroy(self, request, pk):
         movie = get_object_or_404(Movie, pk=pk)
@@ -188,8 +188,8 @@ class SingleMovieView(viewsets.ReadOnlyModelViewSet,
             latest_watch_date=Max('watched_date')
         ).order_by('-latest_watch_date')
 
-        if not queryset:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        # if not queryset:
+        #     return Response(status=status.HTTP_404_NOT_FOUND)
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -478,16 +478,18 @@ class SingleShowView(viewsets.GenericViewSet):
         show = get_object_or_404(Show, pk=pk)
         following_users = request.user.following.values_list('follow', flat=True)
 
-        # Query to get the last watched episode for each following user in the specific series
+        # Subquery to get the latest watch_date for each user in the show
+        latest_episode_subquery = UserEpisode.objects.filter(
+            user=OuterRef('user'),
+            episode__show=show
+        ).order_by('-watch_date').values('watch_date')[:1]
+
+        # Query to get distinct users with their latest watched episode
         queryset = UserEpisode.objects.filter(
             episode__show=show,
-            user__in=following_users
-        ).annotate(
-            latest_watch_date=Max('watch_date')
-        ).order_by('-latest_watch_date')
-
-        if not queryset:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            user__in=following_users,
+            watch_date=Subquery(latest_episode_subquery)
+        ).order_by('-watch_date')
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -547,26 +549,27 @@ class EpisodeView(mixins.RetrieveModelMixin,
         episode_id = self.kwargs['pk']
         episode = get_object_or_404(Episode, pk=episode_id)
         user = request.user
+        user_show = UserShow.objects.filter(user=user, show=episode.show).exists()
 
         if UserEpisode.objects.filter(user=user, episode=episode).exists():
             return Response({"detail": "episode already watched"}, status.HTTP_400_BAD_REQUEST)
 
-        if not UserShow.objects.filter(user=user, show=episode.show).exists():
+        if not user_show:
             UserShow.objects.create(user=user, show=episode.show)
             episode.show.users_added_count += 1
             episode.show.save()
         
         UserEpisode.objects.get_or_create(user=user, episode=episode)
-        user_show = get_object_or_404(UserShow, user=user, show=episode.show)
+        user_show = UserShow.objects.filter(user=user, show=episode.show).first()
         if user_show.status == None:
-            user_show.status = user_show.status.WATCHING
+            user_show.status = 'WATCHING'
             user_show.save()
 
         return Response({"detail": "Episode watched"}, status.HTTP_201_CREATED)
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_queryset()
-        data = request.data
+        data = request.data.copy()
 
         if instance.user != request.user:
             return Response({"detail": "You do not have permission to modify this episode."}, status=status.HTTP_403_FORBIDDEN)
@@ -575,7 +578,7 @@ class EpisodeView(mixins.RetrieveModelMixin,
         new_favorite_cast_id = data.get('favorite_cast')
         content_type = ContentType.objects.get(model='episode').id
 
-        if Cast.objects.filter(id=new_favorite_cast_id, object_id=instance.episode.id, content_type=content_type):
+        if Cast.objects.filter(id=new_favorite_cast_id, object_id=instance.episode.id, content_type=content_type).exists():
 
             if new_favorite_cast_id and (not old_favorite_cast or new_favorite_cast_id != old_favorite_cast.id):
                 new_favorite_cast = get_object_or_404(Cast, id=new_favorite_cast_id)

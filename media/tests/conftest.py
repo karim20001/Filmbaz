@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from model_bakery import baker
 from django.utils import timezone
-from media.models import Show, UserShow, Episode, UserEpisode
+from media.models import Show, UserShow, Episode, UserEpisode, Actor
 
 User = get_user_model()
 
@@ -69,3 +69,8 @@ def create_movies(genres):
     upcoming_date = timezone.now().date() + datetime.timedelta(days=10)
     upcoming_movies = baker.make('media.Movie', _quantity=3, is_released=False, release_date=upcoming_date, genres=genres)
     return movies + upcoming_movies
+
+@pytest.fixture
+def create_actors():
+    actors = baker.make('media.Actor', _quantity=5)
+    return actors

@@ -106,7 +106,10 @@ DATABASES = {
         'USER': 'filmbaz_test',
         'PASSWORD': '13802001',
         'HOST': 'localhost',
-        'PORT': '5432',       # Default PostgreSQL port
+        'PORT': '5432',   
+        'TEST': {
+            'NAME': 'filmbaz_test_db' ,
+        },
     }
 }
 
